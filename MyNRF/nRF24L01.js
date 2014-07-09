@@ -129,6 +129,7 @@ consts.RF_DR_HIGH = 3;
 consts.RF_PWR_LOW = 1;
 consts.RF_PWR_HIGH = 2;
 
-
+consts.LOW = 0;
+consts.HIGH = 1;
 
 module.exports = consts;
