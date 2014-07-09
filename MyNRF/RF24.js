@@ -14,6 +14,27 @@ module.exports = (function () {
     //typedef enum { RF24_PA_MIN = 0,RF24_PA_LOW, RF24_PA_HIGH, RF24_PA_MAX, RF24_PA_ERROR  } rf24_pa_dbm_e ;
     var rf24_pa_dbm_e = [consts.RF24_PA_MIN, consts.RF24_PA_LOW, consts.RF24_PA_HIGH, consts.RF24_PA_MAX, consts.RF24_PA_ERROR];
 
+	var rf24_datarate_e_str_P=[
+  "1MBPS",
+  "2MBPS",
+  "250KBPS",
+];
+var rf24_model_e_str_P[
+  "nRF24L01",
+  "nRF24L01+",
+];
+var rf24_crclength_e_str_P[
+  "Disabled",
+   "8 bits",
+  "16 bits",
+];
+var rf24_pa_dbm_e_str_P[
+  "PA_MIN",
+  "PA_LOW",
+  "PA_HIGH",
+  "PA_MAX",
+];
+	
     /**
      * Data rate.  How fast data moves through the air.
      *
