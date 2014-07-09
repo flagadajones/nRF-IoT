@@ -1,27 +1,32 @@
+/*
+    Copyright (c) 2007 Stefan Engelke <mbox@stefanengelke.de>
+    Portions Copyright (C) 2011 Greg Copeland
+
+    Permission is hereby granted, free of charge, to any person 
+    obtaining a copy of this software and associated documentation 
+    files (the "Software"), to deal in the Software without 
+    restriction, including without limitation the rights to use, copy, 
+    modify, merge, publish, distribute, sublicense, and/or sell copies 
+    of the Software, and to permit persons to whom the Software is 
+    furnished to do so, subject to the following conditions:
+
+    The above copyright notice and this permission notice shall be 
+    included in all copies or substantial portions of the Software.
+
+    THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, 
+    EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF 
+    MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND 
+    NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT 
+    HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, 
+    WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, 
+    OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER 
+    DEALINGS IN THE SOFTWARE.
+*/
 var consts = {};
 
-consts.MAX_CHANNEL = 127;
-consts.MAX_PAYLOAD_SIZE = 32;
 
-// PA Levels
-consts.PA_MIN = 0;
-consts.PA_LOW = 1;
-consts.PA_HIGH = 2;
-consts.PA_MAX = 3;
-consts.PA_ERROR = 4;
 
-// Bit rates
-consts.BR_1MBPS = 0;
-consts.BR_2MBPS = 1;
-consts.BR_250KBPS = 2;
-
-// CRC
-consts.CRC_DISABLED = 0;
-consts.CRC_8 = 1;
-consts.CRC_16 = 2;
-consts.CRC_ENABLED = 3;
-
-// Registers
+/* Memory Map */
 consts.CONFIG = 0x00;
 consts.EN_AA = 0x01;
 consts.EN_RXADDR = 0x02;
@@ -49,7 +54,7 @@ consts.FIFO_STATUS = 0x17;
 consts.DYNPD = 0x1C;
 consts.FEATURE = 0x1D;
 
-// Bit Mnemonics
+/* Bit Mnemonics */
 consts.MASK_RX_DR = 6;
 consts.MASK_TX_DS = 5;
 consts.MASK_MAX_RT = 4;
@@ -97,7 +102,7 @@ consts.EN_DPL = 2;
 consts.EN_ACK_PAY = 1;
 consts.EN_DYN_ACK = 0;
 
-// Instruction Mnemonics
+/* Instruction Mnemonics */
 consts.R_REGISTER = 0x00;
 consts.W_REGISTER = 0x20;
 consts.REGISTER_MASK = 0x1F;
@@ -111,32 +116,19 @@ consts.FLUSH_RX = 0xE2;
 consts.REUSE_TX_PL = 0xE3;
 consts.NOP = 0xFF;
 
-// Non-P omissions
-consts.LNA_HCURR = 0x00;
+/* Non-P omissions */
+consts.LNA_HCURR = 0;
 
-// P model memory Map
+/* P model memory Map */
 consts.RPD = 0x09;
+consts.W_TX_PAYLOAD_NO_ACK = 0xB0;
 
-// P model bit Mnemonics
+/* P model bit Mnemonics */
 consts.RF_DR_LOW = 5;
 consts.RF_DR_HIGH = 3;
 consts.RF_PWR_LOW = 1;
 consts.RF_PWR_HIGH = 2;
 
-// Signal Mnemonics
-consts.LOW = 0;
-consts.HIGH = 1;
 
-consts.datarate_e_str_P = ["1MBPS", "2MBPS", "250KBPS"];
-consts.model_e_str_P = ["nRF24L01", "nRF24l01+"];
-consts.crclength_e_str_P = ["Disabled", "8 bits", "16 bits"];
-consts.pa_dbm_e_str_P = ["PA_MIN", "PA_LOW", "PA_MED", "PA_HIGH"];
-consts.child_pipe = [consts.RX_ADDR_P0, consts.RX_ADDR_P1, consts.RX_ADDR_P2,
-    consts.RX_ADDR_P3, consts.RX_ADDR_P4, consts.RX_ADDR_P5];
-
-consts.child_payload_size = [consts.RX_PW_P0, consts.RX_PW_P1, consts.RX_PW_P2,
-    consts.RX_PW_P3, consts.RX_PW_P4, consts.RX_PW_P5];
-consts.child_pipe_enable = [consts.ERX_P0, consts.ERX_P1, consts.ERX_P2,
-    consts.ERX_P3, consts.ERX_P4, consts.ERX_P5];
 
 module.exports = consts;

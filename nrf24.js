@@ -1,34 +1,31 @@
 "use strict";
 /*
- This program is free software: you can redistribute it and/or modify
- it under the terms of the GNU General Public License as published by
- the Free Software Foundation, either version 3 of the License, or
- (at your option) any later version.
-
- This program is distributed in the hope that it will be useful,
- but WITHOUT ANY WARRANTY; without even the implied warranty of
- MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- GNU General Public License for more details.
-
- Python port of Maniacbug NRF24L01 library
- Author: Joao Paulo Barraca <jpbarraca@gmail.com>
-
- BeagleBoneBlack and Raspberry Pi use different GPIO access methods.
- Select the most appropriate for you by uncommenting one of the 
- two imports.
- For Raspberry Pi
-import Ras.GPIO as GPIO
-For BBBB
-import Adafruit_BBIO.GPIO as GPIO
-
-import spidev
-import time
-import sys
-*/
-var consts = require('./const');
+ * This program is free software: you can redistribute it and/or modify it under
+ * the terms of the GNU General Public License as published by the Free Software
+ * Foundation, either version 3 of the License, or (at your option) any later
+ * version.
+ * 
+ * This program is distributed in the hope that it will be useful, but WITHOUT
+ * ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS
+ * FOR A PARTICULAR PURPOSE. See the GNU General Public License for more
+ * details.
+ * 
+ * Python port of Maniacbug NRF24L01 library Author: Joao Paulo Barraca
+ * <jpbarraca@gmail.com>
+ * 
+ * BeagleBoneBlack and Raspberry Pi use different GPIO access methods. Select
+ * the most appropriate for you by uncommenting one of the two imports. For
+ * Raspberry Pi import Ras.GPIO as GPIO For BBBB import Adafruit_BBIO.GPIO as
+ * GPIO
+ * 
+ * import spidev import time import sys
+ */
+var consts = require('./consts');
 var b = require('bonescript');
+
 var nrf24 = {};
 
+var SPI = require('spi');
 
 function _BV(x) {
     return 1 << x;
@@ -38,15 +35,19 @@ function _BV(x) {
 nrf24.init = function () {
     this.ce_pin = "P9_15";
     this.irq_pin = "P9_16";
+    this.csn_pin="FIXME";
     this.channel = 76;
     this.data_rate = consts.BR_1MBPS;
     this.wide_band = False; // 2Mbs data rate in use?
     this.p_variant = False; // False for RF24L01 and true for RF24L01P
-    this.payload_size = 5; //*< Fixed size of payloads
-    this.ack_payload_available = False; //*< Whether there is an ack payload waiting
-    this.dynamic_payloads_enabled = False; //*< Whether dynamic payloads are enabled.
-    this.ack_payload_length = 5; //*< Dynamic size of pending ack payload.
-    this.pipe0_reading_address = None; //*< Last address set on pipe 0 for reading.
+    this.payload_size = 5; // *< Fixed size of payloads
+    this.ack_payload_available = False; // *< Whether there is an ack payload
+                                        // waiting
+    this.dynamic_payloads_enabled = False; // *< Whether dynamic payloads are
+                                            // enabled.
+    this.ack_payload_length = 5; // *< Dynamic size of pending ack payload.
+    this.pipe0_reading_address = None; // *< Last address set on pipe 0 for
+                                        // reading.
     this.spidev = None;
 };
 
@@ -54,7 +55,7 @@ nrf24.ce = function (level) {
     if (level == consts.HIGH) {
         b.digitalWrite(this.ce_pin, b.HIGH);
     } else {
-        b.digitalWrite(this.ce_pin, b.HIGH);
+        b.digitalWrite(this.ce_pin, b.LOW);
     }
 };
 
@@ -80,7 +81,7 @@ nrf24.read_register = function (reg, blen) {
         return resp[1];
     }
     return resp.slice(1, blen + 1);
-}
+};
 nrf24.write_register = function (reg, value, length) {
     if (length === undefined) {
         length = -1;
@@ -104,7 +105,7 @@ nrf24.write_register = function (reg, value, length) {
         }
     } else {
         console.log("Value must be int or list");
-        //raise Exception("Value must be int or list");
+        // raise Exception("Value must be int or list");
         return;
     }
     return this.spidev.xfer2(buf)[0];
@@ -125,7 +126,8 @@ nrf24.write_payload = function (buf) {
             txbuffer.append(n);
         } else {
             console.log("Only ints and chars are supported: Found " + str(t));
-            //raise Exception("Only ints and chars are supported: Found " + str(t));
+            // raise Exception("Only ints and chars are supported: Found " +
+            // str(t));
             return;
         };
     }
@@ -151,8 +153,9 @@ nrf24.read_payload = function (self, buf) {
     txbuffer[0] = consts.R_RX_PAYLOAD;
 
     payload = this.spidev.xfer2(txbuffer);
-    del buf[: ];
-    buf.extend(payload[1: ]);
+    buf = []; 
+    buf=buf.concat(payload.slice(1));
+// buf.extend(payload[1: ]);
     return 0;
 };
 nrf24.flush_rx = function () {
@@ -171,46 +174,59 @@ nrf24.print_status = function (status) {
         0, (status & _BV(consts.TX_DS)) ? 1 : 0, (status & _BV(consts.MAX_RT)) ? 1 : 0, ((status >> consts.RX_P_NO) & int("111", 2)), (status & _BV(consts.TX_FULL)) ? 1 : 0
     );
 
-    print status_str;
+    console.log(status_str);
 };
 nrf24.print_observe_tx = function (value) {
     tx_str = "OBSERVE_TX=0x{0:02x}: POLS_CNT={2:x} ARC_CNT={2:x}\r\n".format(
         value, (value >> consts.PLOS_CNT) & int("1111", 2), (value >> consts.ARC_CNT) & int("1111", 2)
     );
-    print tx_str;
+    console.log( tx_str);
 };
-nrf24.print_byte_register = function (name, reg, qty = 1)) {
+nrf24.print_byte_register = function (name, reg, qty) {
+  if(qty==undefined){
+  qty=1;  
+  
+  }
+    
     if (len(name) < 8) {
         extra_tab = '\t';
     } else {
         extra_tab = 0;
     }
-    print "%s\t%c =" % (name, extra_tab), ;
+    
+    var string ="";
     while (qty > 0) {
-        print "0x%02x" % (this.read_register(reg)), ;
+        string=string+"0x"+("00"+this.read_register(reg)).slice(-2) ;
         qty -= 1;
         reg += 1;
     }
-    print "";
+    console.log( name+"\t"+extra_tab+" ="+string);
+
 };
-nrf24.print_address_register = function (name, reg, qty = 1) {
-    if (len(name) < 8) {
+nrf24.print_address_register = function (name, reg, qty) {
+   
+  if(qty==undefined){
+    qty=1;  
+    
+    }
+  if (len(name) < 8) {
         extra_tab = '\t';
     } else {
         extra_tab = 0;
     }
-    print "%s\t%c =" % (name, extra_tab), ;
+   
 
     while (qty > 0) {
         qty -= 1;
         buf = reversed(this.read_register(reg, 5));
         reg += 1;
-        sys.stdout.write(" 0x"), ;
+        var string = " 0x" ;
         for (i in buf) {
-            sys.stdout.write("%02x" % i);
+            string=string+ ("00"+i).slice(-2);
         }
+        console.log( name+"\t"+extra_tab+" ="+string);
     }
-    print "";
+
 };
 
 nrf24.setChannel = function (channel) {
@@ -241,26 +257,33 @@ nrf24.printDetails = function () {
     this.print_byte_register("DYNPD/FEATURE", consts.DYNPD, 2);
 
     //
-    print "Data Rate\t = %s" % consts.datarate_e_str_P[this.getDataRate()];
-    print "Model\t\t = %s" % consts.model_e_str_P[this.isPVariant()];
-    print "CRC Length\t = %s" % consts.crclength_e_str_P[this.getCRCLength()];
-    print "PA Power\t = %s" % consts.pa_dbm_e_str_P[this.getPALevel()];
+    console.log("Data Rate\t = " + consts.datarate_e_str_P[this.getDataRate()]);
+    console.log("Model\t\t = " + consts.model_e_str_P[this.isPVariant()]);
+    console.log("CRC Length\t = " + consts.crclength_e_str_P[this.getCRCLength()]);
+    console.log("PA Power\t = " + consts.pa_dbm_e_str_P[this.getPALevel()]);
 };
-nrf24.begin = function (major, minor, ce_pin, irq_pin) {
+nrf24.begin = function (spiDevice, ce_pin, irq_pin) {
     // Initialize SPI bus
-    this.spidev = spidev.SpiDev();
-    this.spidev.open(major, minor);
+    this.spidev = new SPI.Spi(spiDevice);
+    this.spidev.maxSpeed(10000000);
+    this.spidev.open();  
+
     this.ce_pin = ce_pin;
     this.irq_pin = irq_pin;
 
-    GPIO.setup(this.ce_pin, GPIO.OUT);
-    GPIO.setup(this.irq_pin, GPIO.IN, pull_up_down = GPIO.PUD_UP);
+    
+    b.pinMode(this.ce_pin, b.OUTPUT);
+    b.pinMode(this.csn_pin, b.OUTPUT);
+    b.pinMode(this.irq_pin, b.INPUT);
 
     time.sleep(5 / 1000000.0);
 
-    // Set 1500uS (minimum for 32B payload in ESB@250KBPS) timeouts, to make testing a little easier
-    // WARNING: If this is ever lowered, either 250KBS mode with AA is broken or maximum packet
-    // sizes must never be used. See documentation for a more complete explanation.
+    // Set 1500uS (minimum for 32B payload in ESB@250KBPS) timeouts, to make
+    // testing a little easier
+    // WARNING: If this is ever lowered, either 250KBS mode with AA is broken or
+    // maximum packet
+    // sizes must never be used. See documentation for a more complete
+    // explanation.
     this.write_register(consts.SETUP_RETR, (int('0100', 2) << consts.ARD) | (int('1111', 2) << consts.ARC));
 
     // Restore our default PA level
@@ -273,7 +296,8 @@ nrf24.begin = function (major, minor, ce_pin, irq_pin) {
     if (this.setDataRate(consts.BR_250KBPS)) {
         this.p_variant = True;
     }
-    // Then set the data rate to the slowest (and most reliable) speed supported by all
+    // Then set the data rate to the slowest (and most reliable) speed supported
+    // by all
     // hardware.
     this.setDataRate(consts.BR_1MBPS);
 
@@ -287,7 +311,7 @@ nrf24.begin = function (major, minor, ce_pin, irq_pin) {
     // Notice reset and flush is the last thing we do
     this.write_register(consts.STATUS, _BV(consts.RX_DR) | _BV(consts.TX_DS) | _BV(consts.MAX_RT));
 
-    // Set up default configuration.  Callers can always change it later.
+    // Set up default configuration. Callers can always change it later.
     // This channel should be universally safe and not bleed over into adjacent
     // spectrum.
     this.setChannel(this.channel);
@@ -295,7 +319,7 @@ nrf24.begin = function (major, minor, ce_pin, irq_pin) {
     // Flush buffers
     this.flush_rx();
     this.flush_tx();
-}
+};
 nrf24.startListening = function () {
     this.write_register(consts.CONFIG, this.read_register(consts.CONFIG) | _BV(consts.PWR_UP) | _BV(consts.PRIM_RX));
     this.write_register(consts.STATUS, _BV(consts.RX_DR) | _BV(consts.TX_DS) | _BV(consts.MAX_RT));
@@ -314,19 +338,19 @@ nrf24.stopListening = function () {
     this.ce(consts.LOW);
     this.flush_tx();
     this.flush_rx();
-}
+};
 nrf24.powerDown = function () {
     this.write_register(consts.CONFIG, this.read_register(consts.CONFIG) & ~_BV(consts.PWR_UP));
-}
+};
 nrf24.powerUp = function () {
     this.write_register(consts.CONFIG, this.read_register(consts.CONFIG) & _BV(consts.PWR_UP));
     time.sleep(150 / 1000000.0);
-}
+};
 nrf24.write = function (buf) {
     // Begin the write
     this.startWrite(buf);
 
-    timeout = this.getMaxTimeout(); //s to wait for timeout
+    timeout = this.getMaxTimeout(); // s to wait for timeout
     sent_at = time.time();
 
     while (True) {
@@ -361,7 +385,7 @@ nrf24.startWrite = function (buf) {
 
 nrf24.getDynamicPayloadSize = function () {
     return this.spidev.xfer2([consts.R_RX_PL_WID, consts.NOP])[1];
-}
+};
 nrf24.available = function (pipe_num, irq_wait) {
     if (irq_wait == undefined) {
         irq_wait = false;
@@ -377,19 +401,19 @@ nrf24.available = function (pipe_num, irq_wait) {
     }
     // Sometimes the radio specifies that there is data in one pipe but
     // doesn't set the RX flag...
-    if (status & _BV(consts.RX_DR) || (status & 0b00001110 != 0b00001110)) {
+    if ((status & _BV(consts.RX_DR)) || (status & parseInt('00001110',2) != parseInt('00001110',2))) {
         result = True;
     }
     if (result) {
         // If the caller wants the pipe number, include that
         if (len(pipe_num) >= 1) {
-            pipe_num[0] = (status >> consts.RX_P_NO) & 0b00000111;
+            pipe_num[0] = (status >> consts.RX_P_NO) & parseInt('00000111',2);
         }
 
     }
     // Clear the status bit
 
-    // ??? Should this REALLY be cleared now?  Or wait until we
+    // ??? Should this REALLY be cleared now? Or wait until we
     // actually READ the payload?
     this.write_register(consts.STATUS, _BV(consts.RX_DR));
 
@@ -405,7 +429,7 @@ nrf24.read = function (buf) {
 
     // was this the last of the data available?
     return this.read_register(consts.FIFO_STATUS) & _BV(consts.RX_EMPTY);
-}
+};
 nrf24.whatHappened = function () {
     // Read the status & reset the status in one easy call
     // Or is that such a good idea?
@@ -420,7 +444,7 @@ nrf24.whatHappened = function () {
         "tx_fail": tx_fail,
         "rx_ready": rx_ready
     };
-}
+};
 nrf24.openWritingPipe = function (value) {
     // Note that the NRF24L01(+)
     // expects it LSB first.
@@ -432,7 +456,7 @@ nrf24.openWritingPipe = function (value) {
     this.write_register(consts.RX_PW_P0, min(this.payload_size, max_payload_size));
 };
 nrf24.openReadingPipe = function (child, address) {
-    // If this is pipe 0, cache the address.  This is needed because
+    // If this is pipe 0, cache the address. This is needed because
     // openWritingPipe() will overwrite the pipe 0 address, so
     // startListening() will have to restore it.
     if (child == 0) {
@@ -449,7 +473,7 @@ nrf24.openReadingPipe = function (child, address) {
         this.write_register(consts.child_payload_size[child], this.payload_size);
 
         // Note it would be more efficient to set all of the bits for all open
-        // pipes at once.  However, I thought it would make the calling code
+        // pipes at once. However, I thought it would make the calling code
         // more simple to do it this way.
         this.write_register(consts.EN_RXADDR,
             this.read_register(consts.EN_RXADDR) | _BV(consts.child_pipe_enable[child]));
@@ -507,7 +531,8 @@ nrf24.writeAckPayload = function (pipe, buf, buf_len) {
 
     max_payload_size = 32;
     data_len = min(buf_len, max_payload_size);
-    txbuffer.extend(buf[0: data_len]);
+    txbuffer.push.apply(txbuffer, buf.slice(0,data_len));
+    // txbuffer.extend(buf[0: data_len]);
 
     this.spidev.xfer2(txbuffer);
 };
@@ -586,7 +611,8 @@ nrf24.setDataRate = function (speed) {
     setup &= ~(_BV(consts.RF_DR_LOW) | _BV(consts.RF_DR_HIGH));
 
     if (speed == consts.BR_250KBPS) {
-        // Must set the RF_DR_LOW to 1 RF_DR_HIGH (used to be RF_DR) is already 0
+        // Must set the RF_DR_LOW to 1 RF_DR_HIGH (used to be RF_DR) is already
+        // 0
         // Making it '10'.
         this.wide_band = False;
         setup |= _BV(consts.RF_DR_LOW);
@@ -654,7 +680,7 @@ nrf24.getCRCLength = function () {
             result = consts.CRC_8;
 
     return result;
-}
+};
 nrf24.disableCRC = function () {
     disable = this.read_register(consts.CONFIG) & ~_BV(consts.EN_CRC);
     this.write_register(consts.CONFIG, disable);
