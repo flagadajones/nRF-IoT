@@ -79,7 +79,7 @@ module.exports = (function () {
     var spiDev;
     var nrf = {};
     var spi;
-    
+
 
     function _BV(x) {
         return 1 << (x)
@@ -421,12 +421,12 @@ module.exports = (function () {
      */
     //RF24(uint8_t _cepin, uint8_t _cspin);
     nrf.RF24 = function (_spiDev, _cepin, _cspin) {
-     
+
         ce_pin = _cepin;
 
         csn_pin = _cspin;
 
-        spiDev=_spiDev;
+        spiDev = _spiDev;
         wide_band = false;
         p_variant = false;
         payload_size = 32;
@@ -447,7 +447,7 @@ module.exports = (function () {
         b.pinMode(csn_pin, b.OUTPUT);
 
         // Initialize SPI bus
-        console.l
+
         spi = new SPI.Spi(spiDev);
         spi.maxSpeed(10000000);
         spi.open();
@@ -475,9 +475,9 @@ module.exports = (function () {
         Q().then(function () {
             var deferred = Q.defer();
             // Restore our default PA level
-            
+
             nrf.setPALevel(consts.RF24_PA_MAX, deferred.makeNodeResolver());
-            
+
             return deferred.promise;
         }).then(function () {
             var deferred = Q.defer();
@@ -491,7 +491,7 @@ module.exports = (function () {
 
         }).then(function (result) {
             var deferred = Q.defer();
-  
+
             if (result) {
                 p_variant = true;
             }
@@ -531,9 +531,9 @@ module.exports = (function () {
 
             nrf.printDetails();
         }).catch(function (error) {
-    console.log(error);
-})
-.done();
+            console.log(error);
+        })
+            .done();
 
 
 
@@ -1170,7 +1170,7 @@ module.exports = (function () {
      */
     //void setPALevel( rf24_pa_dbm_e level ) ;
     nrf.setPALevel = function (level, callback) {
-      
+
         var setup = readRegister(consts.RF_SETUP, new Buffer(1), function (result) {
 
             setup = result[0] & ~(_BV(consts.RF_PWR_LOW) | _BV(consts.RF_PWR_HIGH));
@@ -1391,74 +1391,74 @@ module.exports = (function () {
 
         Q().then(function () {
             var deferred = Q.defer();
-            nrf.get_Status(deferred.makeNodeResolver());
+            get_Status(deferred.makeNodeResolver());
             return deferred.promise;
         }).then(function (status) {
-            nrf.print_status(status);
-            deferred.resolve(body);
+            print_status(status);
+            deferred.resolve();
             return deferred.promise;
         }).then(function () {
-            nrf.print_address_register("RX_ADDR_P0", consts.RX_ADDR_P0, deferred.makeNodeResolver());
+            print_address_register("RX_ADDR_P0", consts.RX_ADDR_P0, deferred.makeNodeResolver());
             return deferred.promise;
         }).then(function () {
-            nrf.print_address_register("RX_ADDR_P1", consts.RX_ADDR_P1, deferred.makeNodeResolver());
+            print_address_register("RX_ADDR_P1", consts.RX_ADDR_P1, deferred.makeNodeResolver());
             return deferred.promise;
         }).then(function () {
-            nrf.print_byte_register("RX_ADDR_P2", consts.RX_ADDR_P2, deferred.makeNodeResolver());
+            print_byte_register("RX_ADDR_P2", consts.RX_ADDR_P2, deferred.makeNodeResolver());
             return deferred.promise;
         }).then(function () {
-            nrf.print_byte_register("RX_ADDR_P3", consts.RX_ADDR_P3, deferred.makeNodeResolver());
+            print_byte_register("RX_ADDR_P3", consts.RX_ADDR_P3, deferred.makeNodeResolver());
             return deferred.promise;
         }).then(function () {
-            nrf.print_byte_register("RX_ADDR_P4", consts.RX_ADDR_P4, deferred.makeNodeResolver());
+            print_byte_register("RX_ADDR_P4", consts.RX_ADDR_P4, deferred.makeNodeResolver());
             return deferred.promise;
         }).then(function () {
-            nrf.print_byte_register("RX_ADDR_P5", consts.RX_ADDR_P5, deferred.makeNodeResolver());
+            print_byte_register("RX_ADDR_P5", consts.RX_ADDR_P5, deferred.makeNodeResolver());
             return deferred.promise;
         }).then(function () {
-            nrf.print_address_register("TX_ADDR", consts.TX_ADDR, deferred.makeNodeResolver());
+            print_address_register("TX_ADDR", consts.TX_ADDR, deferred.makeNodeResolver());
             return deferred.promise;
         }).then(function () {
-            nrf.print_byte_register("RX_PW_P0", consts.RX_PW_P0, deferred.makeNodeResolver());
+            print_byte_register("RX_PW_P0", consts.RX_PW_P0, deferred.makeNodeResolver());
             return deferred.promise;
         }).then(function () {
-            nrf.print_byte_register("RX_PW_P1", consts.RX_PW_P1, deferred.makeNodeResolver());
+            print_byte_register("RX_PW_P1", consts.RX_PW_P1, deferred.makeNodeResolver());
             return deferred.promise;
         }).then(function () {
-            nrf.print_byte_register("RX_PW_P2", consts.RX_PW_P2, deferred.makeNodeResolver());
+            print_byte_register("RX_PW_P2", consts.RX_PW_P2, deferred.makeNodeResolver());
             return deferred.promise;
         }).then(function () {
-            nrf.print_byte_register("RX_PW_P3", consts.RX_PW_P3, deferred.makeNodeResolver());
+            print_byte_register("RX_PW_P3", consts.RX_PW_P3, deferred.makeNodeResolver());
             return deferred.promise;
         }).then(function () {
-            nrf.print_byte_register("RX_PW_P4", consts.RX_PW_P4, deferred.makeNodeResolver());
+            print_byte_register("RX_PW_P4", consts.RX_PW_P4, deferred.makeNodeResolver());
             return deferred.promise;
         }).then(function () {
-            nrf.print_byte_register("RX_PW_P5", consts.RX_PW_P5, deferred.makeNodeResolver());
+            print_byte_register("RX_PW_P5", consts.RX_PW_P5, deferred.makeNodeResolver());
             return deferred.promise;
         }).then(function () {
-            nrf.print_byte_register("RX_PW_P6", consts.RX_PW_P6, deferred.makeNodeResolver());
+            print_byte_register("RX_PW_P6", consts.RX_PW_P6, deferred.makeNodeResolver());
             return deferred.promise;
         }).then(function () {
-            nrf.print_byte_register("EN_AA", consts.EN_AA, deferred.makeNodeResolver());
+            print_byte_register("EN_AA", consts.EN_AA, deferred.makeNodeResolver());
             return deferred.promise;
         }).then(function () {
-            nrf.print_byte_register("EN_RXADDR", consts.EN_RXADDR, deferred.makeNodeResolver());
+            print_byte_register("EN_RXADDR", consts.EN_RXADDR, deferred.makeNodeResolver());
             return deferred.promise;
         }).then(function () {
-            nrf.print_byte_register("RF_CH", consts.RF_CH, deferred.makeNodeResolver());
+            print_byte_register("RF_CH", consts.RF_CH, deferred.makeNodeResolver());
             return deferred.promise;
         }).then(function () {
-            nrf.print_byte_register("RF_SETUP", consts.RF_SETUP, deferred.makeNodeResolver());
+            print_byte_register("RF_SETUP", consts.RF_SETUP, deferred.makeNodeResolver());
             return deferred.promise;
         }).then(function () {
-            nrf.print_byte_register("CONFIG", consts.CONFIG, deferred.makeNodeResolver());
+            print_byte_register("CONFIG", consts.CONFIG, deferred.makeNodeResolver());
             return deferred.promise;
         }).then(function () {
-            nrf.print_byte_register("DYNPD", consts.DYNPD, deferred.makeNodeResolver());
+            print_byte_register("DYNPD", consts.DYNPD, deferred.makeNodeResolver());
             return deferred.promise;
         }).then(function () {
-            nrf.print_byte_register("FEATURE", consts.FEATURE, deferred.makeNodeResolver());
+            print_byte_register("FEATURE", consts.FEATURE, deferred.makeNodeResolver());
             return deferred.promise;
         }).then(function () {
             var deferred = Q.defer();
@@ -1489,9 +1489,9 @@ module.exports = (function () {
             deferred.resolve();
             return deferred.promise;
         }).catch(function (error) {
-    console.log(error);
-})
-.done();
+            console.log(error);
+        })
+            .done();
 
 
 
@@ -1701,7 +1701,7 @@ module.exports = (function () {
         });
     };
 
-   
+
     return nrf;
 
 
