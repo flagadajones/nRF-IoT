@@ -1,6 +1,7 @@
 var nrf = require('./RF24.js');
 var Q = require('q');
-RF24 = nrf.RF24('/dev/spidev1.0', 'P9_16', 'P9_17');
+var asap =require('asap');
+nrf.RF24('/dev/spidev1.0', 'P9_16', 'P9_17');
 
 function BASEBROADCAST(x) {
     var buf = new Buffer(5);
@@ -38,7 +39,7 @@ function promiseWhile(condition, body) {
     // Start running the loop in the next tick so that this function is
     // completely async. It would be unexpected if `body` was called
     // synchronously the first time.
-    Q.nextTick(loop);
+    asap(loop);
 
     // The promise
     return done.promise;
@@ -48,7 +49,7 @@ function promiseWhile(condition, body) {
 var cnt = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0]; //array used to store the last 10 header.IDs
 var cntID = 0; //counter for header.ID array
 
-function DupID(var id) {
+function DupID( id) {
     //this function keeps the last 10 header.IDs, then searches through them all
     //when cntID reaches 10, it rolls over to 0 again
     //if a match is found, it returns true, falst otherwise
@@ -70,38 +71,52 @@ function DupID(var id) {
 
 function setup() {
 
-    RF24.begin();
+    nrf.begin();
     //setup radio
     Q().then(function () {
         var deferred = Q.defer();
-
-        RF24.setRetries(15, 15);
-        RF24.enableDynamicPayloads(deferred.makeNodeResolver());
-
-        return deferred.promise;
-    }).then(function () {
-        var deferred = Q.defer();
-
-        RF24.openReadingPipe(1, BASEBROADCAST(1), deferred.makeNodeResolver()); //Nodes send on this
+console.log("retries");
+        nrf.setRetries(15, 15);
+        nrf.printDetails();
+        console.log("dynamic");
+        nrf.enableDynamicPayloads(deferred.makeNodeResolver());
 
         return deferred.promise;
     }).then(function () {
         var deferred = Q.defer();
+console.log("openPipe");
+        nrf.openReadingPipe(1, BASEBROADCAST(1), deferred.makeNodeResolver()); //Nodes send on this
 
-        RF24.openWritingPipe(BASEBROADCAST(2));
-        RF24.startListening(deferred.makeNodeResolver());
+        return deferred.promise;
+    }).then(function () {
+        var deferred = Q.defer();
+console.log("openWrite");
+        nrf.openWritingPipe(BASEBROADCAST(2));
+        console.log("startLMisten");
+        nrf.startListening(deferred.makeNodeResolver());
 
         return deferred.promise;
     }).then(function () {
         var deferred = Q.defer();
 
         console.log("base starting...");
-        RF24.printDetails()
+        nrf.printDetails();
         deferred.resolve();
         return deferred.promise;
     })
 
 
+nrf.getChannel(function(result){
+  console.log("channel");
+  console.log(result);
+  
+});
+ nrf.setRetries(15, 15);
+ nrf.getRetries(function(result){
+  console.log("retries");
+  console.log(result);
+  
+});
 }
 
 function loop() {
@@ -116,9 +131,10 @@ function loop() {
 
             return deferred.promise;
         }).then(function (available) {
+            var deferred = Q.defer();
             if (available) {
                 var deferredTop = Q.defer();
-                RF24.getDynamicPayloadSize(deferred.makeNodeResolver());
+                nrf.getDynamicPayloadSize(deferred.makeNodeResolver());
 
                 return deferred.promise;
             } else {
@@ -127,9 +143,9 @@ function loop() {
                 return defered.reject;
             }
         }).then(function (payloadSize) {
-            var deferredTop = Q.defer();
+            var deferred = Q.defer();
             var buf = new Buffer(payloadSize);
-            RF24.read(deferred.makeNodeResolver());
+            nrf.read(deferred.makeNodeResolver());
             return deferred.promise;
         }).then(function (done, buffer) {
             console.log(done);
@@ -143,7 +159,7 @@ function loop() {
         return deferredTop.promise;
     });
 
-})
+
 
 }
 /*
@@ -177,4 +193,4 @@ function convert(buffer) {
 }
 
 setup();
-loop();
+//loop();

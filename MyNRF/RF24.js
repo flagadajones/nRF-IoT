@@ -163,15 +163,21 @@ module.exports = (function () {
     //uint8_t read_register(uint8_t reg);
 
     function readRegister(reg, val, callback) {
+        console.log(reg);
+     //   console.log(val);
         csnLow();
         var buf1 = new Buffer(1 + val.length);
         buf1[0] = consts.READ_REGISTER | (consts.REGISTER_MASK & reg);
 
-        for (var i = 0; i < val.length; i++) {
-            buf1[i + 1] = val[i];
-        }
 
-        spi.transfer(buf1, new Buffer(buf1.length), function (device, buf) {
+        for (var i = 0; i < val.length; i++) {
+            buf1[i + 1] = 0xff;//val[i];
+        }
+        console.log(buf1);
+        spi.transfer(buf1, buf1, function (device, buf) {
+            console.log(device);
+            console.log(buf);
+            
             var rBuf = new Buffer(buf.length - 1);
             for (var i = 1; i < buf.length; i++) {
                 rBuf[i - 1] = buf[i];
@@ -295,9 +301,9 @@ module.exports = (function () {
     //  uint8_t get_status(void);
     function get_status(callback) {
         csnLow();
-        var buf1 = new Buffer(2);
+        var buf1 = new Buffer(1);
         buf1[0] = consts.NOP;
-        buf1[1] = 0x00;
+        
 
         spi.transfer(buf1, new Buffer(1), function (device, buf) {
             csnHigh();
@@ -447,7 +453,7 @@ module.exports = (function () {
         b.pinMode(csn_pin, b.OUTPUT);
 
         // Initialize SPI bus
-
+console.log(spiDev);
         spi = new SPI.Spi(spiDev);
         spi.maxSpeed(10000000);
         spi.open();
@@ -465,7 +471,7 @@ module.exports = (function () {
         //delay(5);
         blockMicroseconds(TIMING["pece2csn"]);
 
-        // Set 1500uS (minimum for 32B payload in ESB@250KBPS) timeouts, to make testing a little easier
+    /*    // Set 1500uS (minimum for 32B payload in ESB@250KBPS) timeouts, to make testing a little easier
         // WARNING: If this is ever lowered, either 250KBS mode with AA is broken or maximum packet
         // sizes must never be used. See documentation for a more complete explanation.
         var buf = new Buffer(1);
@@ -529,13 +535,13 @@ module.exports = (function () {
             flush_rx();
             flush_tx();
 
-            nrf.printDetails();
+          //  nrf.printDetails();
         }).catch(function (error) {
             console.log(error);
         })
             .done();
 
-
+*/
 
 
 
@@ -905,7 +911,7 @@ module.exports = (function () {
     //void setRetries(uint8_t delay, uint8_t count);
     nrf.setRetries = function (delay, count) {
         var buf = new Buffer(1);
-        buf[0] = (delay & 0xf) << ARD | (count & 0xf) << ARC;
+        buf[0] = (delay & 0xf) << consts.ARD | (count & 0xf) << consts.ARC;
         writeRegister(consts.SETUP_RETR, buf);
     };
 
@@ -948,6 +954,7 @@ module.exports = (function () {
      */
     //uint8_t getChannel(void);
     nrf.getChannel = function (callback) {
+        
         readRegister(consts.RF_CH, new Buffer(1), function (resultCH) {
             callback(resultCH[0]);
         });
@@ -1391,73 +1398,95 @@ module.exports = (function () {
 
         Q().then(function () {
             var deferred = Q.defer();
-            get_Status(deferred.makeNodeResolver());
+            get_status(deferred.makeNodeResolver());
             return deferred.promise;
         }).then(function (status) {
+             var deferred = Q.defer();
             print_status(status);
             deferred.resolve();
             return deferred.promise;
         }).then(function () {
+             var deferred = Q.defer();
             print_address_register("RX_ADDR_P0", consts.RX_ADDR_P0, deferred.makeNodeResolver());
             return deferred.promise;
         }).then(function () {
+             var deferred = Q.defer();
             print_address_register("RX_ADDR_P1", consts.RX_ADDR_P1, deferred.makeNodeResolver());
             return deferred.promise;
         }).then(function () {
+             var deferred = Q.defer();
             print_byte_register("RX_ADDR_P2", consts.RX_ADDR_P2, deferred.makeNodeResolver());
             return deferred.promise;
         }).then(function () {
+             var deferred = Q.defer();
             print_byte_register("RX_ADDR_P3", consts.RX_ADDR_P3, deferred.makeNodeResolver());
             return deferred.promise;
         }).then(function () {
+             var deferred = Q.defer();
             print_byte_register("RX_ADDR_P4", consts.RX_ADDR_P4, deferred.makeNodeResolver());
             return deferred.promise;
         }).then(function () {
+             var deferred = Q.defer();
             print_byte_register("RX_ADDR_P5", consts.RX_ADDR_P5, deferred.makeNodeResolver());
             return deferred.promise;
         }).then(function () {
+             var deferred = Q.defer();
             print_address_register("TX_ADDR", consts.TX_ADDR, deferred.makeNodeResolver());
             return deferred.promise;
         }).then(function () {
+             var deferred = Q.defer();
             print_byte_register("RX_PW_P0", consts.RX_PW_P0, deferred.makeNodeResolver());
             return deferred.promise;
         }).then(function () {
+             var deferred = Q.defer();
             print_byte_register("RX_PW_P1", consts.RX_PW_P1, deferred.makeNodeResolver());
             return deferred.promise;
         }).then(function () {
+             var deferred = Q.defer();
             print_byte_register("RX_PW_P2", consts.RX_PW_P2, deferred.makeNodeResolver());
             return deferred.promise;
         }).then(function () {
+             var deferred = Q.defer();
             print_byte_register("RX_PW_P3", consts.RX_PW_P3, deferred.makeNodeResolver());
             return deferred.promise;
         }).then(function () {
+             var deferred = Q.defer();
             print_byte_register("RX_PW_P4", consts.RX_PW_P4, deferred.makeNodeResolver());
             return deferred.promise;
         }).then(function () {
+             var deferred = Q.defer();
             print_byte_register("RX_PW_P5", consts.RX_PW_P5, deferred.makeNodeResolver());
             return deferred.promise;
         }).then(function () {
+             var deferred = Q.defer();
             print_byte_register("RX_PW_P6", consts.RX_PW_P6, deferred.makeNodeResolver());
             return deferred.promise;
         }).then(function () {
+             var deferred = Q.defer();
             print_byte_register("EN_AA", consts.EN_AA, deferred.makeNodeResolver());
             return deferred.promise;
         }).then(function () {
+             var deferred = Q.defer();
             print_byte_register("EN_RXADDR", consts.EN_RXADDR, deferred.makeNodeResolver());
             return deferred.promise;
         }).then(function () {
+             var deferred = Q.defer();
             print_byte_register("RF_CH", consts.RF_CH, deferred.makeNodeResolver());
             return deferred.promise;
         }).then(function () {
+             var deferred = Q.defer();
             print_byte_register("RF_SETUP", consts.RF_SETUP, deferred.makeNodeResolver());
             return deferred.promise;
         }).then(function () {
+             var deferred = Q.defer();
             print_byte_register("CONFIG", consts.CONFIG, deferred.makeNodeResolver());
             return deferred.promise;
         }).then(function () {
+             var deferred = Q.defer();
             print_byte_register("DYNPD", consts.DYNPD, deferred.makeNodeResolver());
             return deferred.promise;
         }).then(function () {
+             var deferred = Q.defer();
             print_byte_register("FEATURE", consts.FEATURE, deferred.makeNodeResolver());
             return deferred.promise;
         }).then(function () {
@@ -1465,11 +1494,13 @@ module.exports = (function () {
             nrf.getDataRate(deferred.makeNodeResolver());
             return deferred.promise;
         }).then(function (dataRate) {
+             var deferred = Q.defer();
             console.log("Data Rate\t = " + rf24_datarate_e_str_P[dataRate]);
             deferred.resolve();
             return deferred.promise;
         }).then(function () {
-            console.log("Model\t\t = " + rf24_model_e_str_P[isPVariant()]);
+             var deferred = Q.defer();
+            console.log("Model\t\t = " + rf24_model_e_str_P[nrf.isPVariant()]);
             deferred.resolve();
             return deferred.promise;
         }).then(function () {
@@ -1477,6 +1508,7 @@ module.exports = (function () {
             nrf.getCRCLength(deferred.makeNodeResolver());
             return deferred.promise;
         }).then(function (crc) {
+             var deferred = Q.defer();
             console.log("CRC Length\t = " + rf24_crclength_e_str_P[crc]);
             deferred.resolve();
             return deferred.promise;
@@ -1485,6 +1517,7 @@ module.exports = (function () {
             nrf.getPALevel(deferred.makeNodeResolver());
             return deferred.promise;
         }).then(function (pa) {
+             var deferred = Q.defer();
             console.log("PA Power\t = " + rf24_pa_dbm_e_str_P[pa]);
             deferred.resolve();
             return deferred.promise;
