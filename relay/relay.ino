@@ -8,15 +8,15 @@ RF24 radio(9,10);
 #define RELAYBROADCAST(x) (0xAA00000000LL + x)
 #define NODEACK(x) (0xCC00000000LL + x)
 
+
 struct SENSOR{
-  float temp;
-  float humidity;
-  float pressure;
+  int temp;   //12.6°C => 1260
+  int humidity;
+  int pressure;
 };
 
 struct HEADER{
-  long type;
-  long hops;
+  byte type;
   long src;
   long ID;
   SENSOR sensor;
