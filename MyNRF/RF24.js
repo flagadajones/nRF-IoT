@@ -1,11 +1,12 @@
 'use strict';
 
-var b = require('bonescript');
+//var b = require('bonescript');
 var consts = require('./nRF24L01');
+var bone = require('./bone');
 var SPI = require('spi');
 var q = require('queue-async');
 var Q = require('q');
-
+var GPIO = require("./gpio");
 var asap =require('asap');
 module.exports = (function() {
 
@@ -67,6 +68,10 @@ module.exports = (function() {
      */
     var ce_pin; /*  uint8_t *< "Chip Enable" pin, activates the RX or TX role */
     var csn_pin; /* uint8_t *< SPI Chip select */
+	
+	var ceGPIO;
+	var csnGPIO;
+	
     var wide_band; /* bool 2Mbs data rate in use? */
     var p_variant; /* bool False for RF24L01 and true for RF24L01P */
     var payload_size; /* uint8_t *< Fixed size of payloads */
@@ -120,11 +125,13 @@ module.exports = (function() {
 
 
     function csnHigh() {
-        b.digitalWrite(csn_pin, b.HIGH);
+        //b.digitalWrite(csn_pin, b.HIGH);
+		csnGPIO.value(1);
     };
 
     function csnLow() {
-        b.digitalWrite(csn_pin, b.LOW);
+        //b.digitalWrite(csn_pin, b.LOW);
+		csnGPIO.value(0);
     };
 
 
@@ -137,11 +144,13 @@ module.exports = (function() {
     //void ce(int level)
 
     function ceHigh() {
-        b.digitalWrite(ce_pin, b.HIGH);
+        //b.digitalWrite(ce_pin, b.HIGH);
+		ceGPIO.value(1);
     };
 
     function ceLow() {
-        b.digitalWrite(ce_pin, b.LOW);
+        //b.digitalWrite(ce_pin, b.LOW);
+		ceGPIO.value(0);
     };
 
     /**
@@ -485,8 +494,13 @@ module.exports = (function() {
     //void begin(void);
     nrf.begin = function() {
         // Initialize pins
-        b.pinMode(ce_pin, b.OUTPUT);
-        b.pinMode(csn_pin, b.OUTPUT);
+       // b.pinMode(ce_pin, b.OUTPUT);
+       // b.pinMode(csn_pin, b.OUTPUT);
+		ceGPIO=GPIO.connect(bone.pins[ce_pin].gpio);
+		ceGPIO.mode('out');
+		
+		csnGPIO=GPIO.connect(bone.pins[csn_pin].gpio);
+		csnGPIO.mode('out');
 
         // Initialize SPI bus
         console.log(spiDev);

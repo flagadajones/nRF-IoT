@@ -1,7 +1,7 @@
 var nrf = require('./RF24.js');
 var Q = require('q');
 var asap = require('asap');
-nrf.RF24('/dev/spidev1.0', 'P9_16', 'P9_17');
+nrf.RF24('/dev/spidev1.0','P9_16', 'P9_17');
 
 function BASEBROADCAST(x) {
   var buf = new Buffer(5);
