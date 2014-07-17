@@ -1,7 +1,7 @@
 var nrf = require('./RF24.js');
 var Q = require('q');
 var asap = require('asap');
-nrf.RF24('/dev/spidev1.0','P9_16', 'P9_17');
+nrf.RF24('/dev/spidev1.0','P9_16', 'P9_17','P9_15');
 
 function BASEBROADCAST(x) {
   var buf = new Buffer(5);
@@ -76,25 +76,23 @@ function setup() {
   //setup radio
   Q().then(function() {
     var deferred = Q.defer();
-    console.log("retries");
     nrf.setRetries(15, 15);
+    nrf.setIrqCallback(irqCallback);
    nrf.setCRCLength(1,function(){});
     //        nrf.printDetails();
-    console.log("dynamic");
     nrf.enableDynamicPayloads(deferred.makeNodeResolver());
 
     return deferred.promise;
   }).then(function() {
     var deferred = Q.defer();
-    console.log("openPipe");
     nrf.openReadingPipe(1, BASEBROADCAST(1), deferred.makeNodeResolver()); //Nodes send on this
 
     return deferred.promise;
   }).then(function() {
     var deferred = Q.defer();
-    console.log("openWrite");
+
     nrf.openWritingPipe(BASEBROADCAST(2));
-    console.log("startLMisten");
+
     nrf.startListening(deferred.makeNodeResolver());
 
     return deferred.promise;
@@ -106,7 +104,7 @@ function setup() {
     deferred.resolve();
     return deferred.promise;
   }).then(function() {
-    loop();
+  //  loop();
   }).
   catch (function(error) {
     console.log("errorsetup");
@@ -190,6 +188,63 @@ function loop() {
 
 
 }
+
+
+
+function irqCallback(value){
+ // console.log("####### "+value);
+ var whatResult;
+ Q().then(function() {
+      var deferred = Q.defer();
+       nrf.whatHappened(deferred.makeNodeResolver());
+//console.log("what");
+
+      return deferred.promise;
+    }).then(function(what) {
+whatResult=what;
+      var deferred = Q.defer();
+   // console.log(what);
+  //    console.log("res what");
+      deferred.resolve();
+      return deferred.promise;
+    })
+ .then(function() {
+      var deferred = Q.defer();
+    //  console.log("available");
+       nrf.available(deferred.makeNodeResolver())
+
+      return deferred.promise;
+    }).then(function(available) {
+      var deferred = Q.defer();
+    
+     if (available) {
+         nrf.getDynamicPayloadSize(deferred.makeNodeResolver());
+      
+      }
+      else {
+   //     console.log("not available");
+   console.log(whatResult);
+        deferred.reject("rien a faire");
+      }
+      return deferred.promise;
+    }).then(function(payloadSize) {
+//      console.log("payload "+payloadSize);
+      var deferred = Q.defer();
+      
+      nrf.read(payloadSize,deferred.makeNodeResolver());
+      return deferred.promise;
+    }).then(function(result) {
+      var res=convert(result.buf);
+      //console.log(res);
+//      console.log("from 0x"+res.src.toString(16)+" ID:"+res.ID.toString(16)+" hops: "+res.hops);
+      console.log(res.type+" "+res.hops+" "+res.src.toString(16)+" "+res.ID.toString(16)+" "+res.sensor.temp+" "+res.sensor.humidity+" "+res.sensor.pressure);
+
+    }).
+    catch (function(error) {
+//      console.log("error loop");
+      console.log(error);
+    }).done();
+}
 /*
 struct SENSOR{
   float temp;     => 4 bytes
@@ -208,6 +263,7 @@ struct HEADER{
 
 function convert(buffer) {
   var result = {};
+  try{
   result.type = buffer.readInt32LE(0);
   result.hops = buffer.readInt32LE(4);
   result.src = buffer.readInt32LE(8);
@@ -216,7 +272,14 @@ function convert(buffer) {
   result.sensor.temp = buffer.readFloatLE(16);
   result.sensor.humidity = buffer.readFloatLE(20);
   result.sensor.pressure = buffer.readFloatLE(24);
-
+}catch(error){
+  console.log("erreur convert");
+  console.log(error);
+  console.log(buffer.length);
+  console.log(buffer);
+  
+  
+}
   return result;
 }
 

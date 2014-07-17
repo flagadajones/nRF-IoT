@@ -68,10 +68,11 @@ module.exports = (function() {
      */
     var ce_pin; /*  uint8_t *< "Chip Enable" pin, activates the RX or TX role */
     var csn_pin; /* uint8_t *< SPI Chip select */
-	
+	var irq_pin;
 	var ceGPIO;
 	var csnGPIO;
-	
+	var irqGPIO;
+	var irqCallback;
     var wide_band; /* bool 2Mbs data rate in use? */
     var p_variant; /* bool False for RF24L01 and true for RF24L01P */
     var payload_size; /* uint8_t *< Fixed size of payloads */
@@ -471,12 +472,12 @@ module.exports = (function() {
      * @param _cspin The pin attached to Chip Select
      */
     //RF24(uint8_t _cepin, uint8_t _cspin);
-    nrf.RF24 = function(_spiDev, _cepin, _cspin) {
+    nrf.RF24 = function(_spiDev, _cepin, _cspin,_irqpin) {
 
         ce_pin = _cepin;
 
         csn_pin = _cspin;
-
+        irq_pin=_irqpin;
         spiDev = _spiDev;
         wide_band = false;
         p_variant = false;
@@ -492,6 +493,9 @@ module.exports = (function() {
      * Call this in setup(), before calling any other methods.
      */
     //void begin(void);
+    nrf.setIrqCallback=function(callback){
+        irqCallback=callback;
+    }
     nrf.begin = function() {
         // Initialize pins
        // b.pinMode(ce_pin, b.OUTPUT);
@@ -502,8 +506,17 @@ module.exports = (function() {
 		csnGPIO=GPIO.connect(bone.pins[csn_pin].gpio);
 		csnGPIO.mode('out');
 
+	    irqGPIO=GPIO.connect(bone.pins[irq_pin].gpio);
+		irqGPIO.mode('in');
+		irqGPIO.on('fall',function(value){
+	//console.log("rise");
+		    if(irqCallback)
+		    irqCallback(value);
+		  
+		});
+		
         // Initialize SPI bus
-        console.log(spiDev);
+      //  console.log(spiDev);
         spi = new SPI.Spi(spiDev, {'mode': SPI.MODE['MODE_0'],});
         
         spi.maxSpeed(10000000);
@@ -621,8 +634,8 @@ module.exports = (function() {
     //void startListening(void);
     nrf.startListening = function(callback) {
         var config = readRegister(consts.CONFIG, new Buffer(1), function(resultConfig) {
-            console.log("config ");
-            console.log(resultConfig);
+          //  console.log("config ");
+           // console.log(resultConfig);
             ;
             var buf = new Buffer(1);
             buf[0] = resultConfig[0] | _BV(consts.PWR_UP) | _BV(consts.PRIM_RX);
@@ -735,7 +748,7 @@ module.exports = (function() {
                     // * The send failed, too many retries (MAX_RT)
                     // * There is an ack packet waiting (RX_DR)
 
-                    whatHappened(function(what) {
+                    whatHappened(function(err,what) {
 
                         //printf("%u%u%u\r\n",tx_ok,tx_fail,ack_payload_available);
 
@@ -928,8 +941,8 @@ if (result) {
                 for (var i = 0; i < address.length; i++) {
                     buf[i] = address[i];
                 }
-                console.log(buf);
-                console.log(child_pipe[child]);
+              //  console.log(buf);
+              //  console.log(child_pipe[child]);
                 writeRegister(child_pipe[child], buf);
             }
             else {
@@ -947,16 +960,16 @@ if (result) {
             // more simple to do it this way.
             readRegister(consts.EN_RXADDR, new Buffer(1), function(resultRX) {
                 var buf = new Buffer(1);
-                console.log("res");
-                console.log(resultRX);
-                console.log(child);
-                console.log(child_pipe_enable[child]);
+           //     console.log("res");
+            //    console.log(resultRX);
+            //    console.log(child);
+            //    console.log(child_pipe_enable[child]);
                 
                 buf[0] = resultRX[0] | _BV(child_pipe_enable[child]);
                 buf[0] =3;
                 writeRegister(consts.EN_RXADDR, buf);
-                console.log("buf");
-                console.log(buf);
+            //    console.log("buf");
+            //    console.log(buf);
                 callback();
             });
         }
@@ -1270,11 +1283,11 @@ if (result) {
      */
     //void setPALevel( rf24_pa_dbm_e level ) ;
     nrf.setPALevel = function(level, callback) {
-console.log(level);
+//console.log(level);
         var setup = readRegister(consts.RF_SETUP, new Buffer(1), function(result) {
-console.log(result);
+//console.log(result);
             setup = result[0] & ~ (_BV(consts.RF_PWR_LOW) | _BV(consts.RF_PWR_HIGH));
-console.log(setup);
+//console.log(setup);
             // switch uses RAM (evil!)
             if (level == consts.RF24_PA_MAX) {
                 setup = setup | (_BV(consts.RF_PWR_LOW) | _BV(consts.RF_PWR_HIGH));
@@ -1283,9 +1296,9 @@ console.log(setup);
                 setup = setup | _BV(consts.RF_PWR_HIGH);
             }
             else if (level == consts.RF24_PA_LOW) {
-                console.log("LOW");
+  //              console.log("LOW");
                 setup = setup | _BV(consts.RF_PWR_LOW);
-console.log(setup);
+//console.log(setup);
             }
             else if (level == consts.RF24_PA_MIN) {
                 // nothing
@@ -1297,7 +1310,7 @@ console.log(setup);
 
             var buf = new Buffer(1);
             buf[0] = setup;
-            console.log(buf);
+    //        console.log(buf);
             writeRegister(consts.RF_SETUP, buf);
             callback(null);
         });
@@ -1741,18 +1754,21 @@ console.log(setup);
     nrf.whatHappened = function(callback) {
         // Read the status & reset the status in one easy call
         // Or is that such a good idea?
+        //console.log("what1");
         var buf = new Buffer(1);
         buf[0] = _BV(consts.RX_DR) | _BV(consts.TX_DS) | _BV(consts.MAX_RT);
-        writeRegister(consts.STATUS, buf);
-
+        //FIXME a remettre ? : writeRegister(consts.STATUS, buf);
+//console.log("what2");
         readRegister(consts.STATUS, new Buffer(1), function(resultStatus) {
-
+//console.log("what3");
             // Report to the user what happened
-            callback({
-                tx_ok: resultStatus & _BV(consts.TX_DS),
-                tx_fail: resultStatus & _BV(consts.MAX_RT),
-                rx_ready: resultStatus & _BV(consts.RX_DR)
-            });
+            var result ={
+                tx_ok: resultStatus[0] & _BV(consts.TX_DS),
+                tx_fail: resultStatus[0] & _BV(consts.MAX_RT),
+                rx_ready: resultStatus[0] & _BV(consts.RX_DR)
+            };
+  //          console.log(result);
+            callback(null,result);
 
         });
     };
