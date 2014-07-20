@@ -1,11 +1,14 @@
 'use strict';
 
-var b = require('bonescript');
+//var b = require('bonescript');
 var consts = require('./nRF24L01');
+var bone = require('./bone');
 var SPI = require('spi');
 var q = require('queue-async');
 var Q = require('q');
-module.exports = (function () {
+var GPIO = require("./gpio");
+var asap =require('asap');
+module.exports = (function() {
 
     var TIMING = {
         pd2stby: 150, // NOTE: varies dep. on crystal configuration, see p.24/p.19
@@ -31,7 +34,6 @@ module.exports = (function () {
      * For use with setPALevel()
      */
     //typedef enum { RF24_PA_MIN = 0,RF24_PA_LOW, RF24_PA_HIGH, RF24_PA_MAX, RF24_PA_ERROR  } rf24_pa_dbm_e ;
-    var rf24_pa_dbm_e = [consts.RF24_PA_MIN, consts.RF24_PA_LOW, consts.RF24_PA_HIGH, consts.RF24_PA_MAX, consts.RF24_PA_ERROR];
 
     var rf24_datarate_e_str_P = ["1MBPS", "2MBPS", "250KBPS"];
     var rf24_model_e_str_P = ["nRF24L01", "nRF24L01+"];
@@ -44,8 +46,7 @@ module.exports = (function () {
      * For use with setDataRate()
      */
     //typedef enum { RF24_1MBPS = 0, RF24_2MBPS, RF24_250KBPS } rf24_datarate_e;
-    var rf24_datarate_e = [consts.RF24_1MBPS, consts.RF24_2MBPS, consts.RF24_250KBPS];
-
+   
 
     /**
      * CRC Length.  How big (if any) of a CRC is included.
@@ -53,8 +54,7 @@ module.exports = (function () {
      * For use with setCRCLength()
      */
     //typedef enum { RF24_CRC_DISABLED = 0, RF24_CRC_8, RF24_CRC_16 }; rf24_crclength_e;
-    var rf24_crclength_e = [consts.RF24_CRC_DISABLED, consts.RF24_CRC_8, consts.RF24_CRC_16];
-
+    
     //	static const uint8_t child_pipe[] PROGMEM ={  RX_ADDR_P0, RX_ADDR_P1, RX_ADDR_P2, RX_ADDR_P3, RX_ADDR_P4, RX_ADDR_P5};
     var child_pipe = [consts.RX_ADDR_P0, consts.RX_ADDR_P1, consts.RX_ADDR_P2, consts.RX_ADDR_P3, consts.RX_ADDR_P4, consts.RX_ADDR_P5];
     //static const uint8_t child_payload_size[] PROGMEM ={  RX_PW_P0, RX_PW_P1, RX_PW_P2, RX_PW_P3, RX_PW_P4, RX_PW_P5};
@@ -68,6 +68,11 @@ module.exports = (function () {
      */
     var ce_pin; /*  uint8_t *< "Chip Enable" pin, activates the RX or TX role */
     var csn_pin; /* uint8_t *< SPI Chip select */
+	var irq_pin;
+	var ceGPIO;
+	var csnGPIO;
+	var irqGPIO;
+	var irqCallback;
     var wide_band; /* bool 2Mbs data rate in use? */
     var p_variant; /* bool False for RF24L01 and true for RF24L01P */
     var payload_size; /* uint8_t *< Fixed size of payloads */
@@ -101,7 +106,7 @@ module.exports = (function () {
         // Start running the loop in the next tick so that this function is
         // completely async. It would be unexpected if `body` was called
         // synchronously the first time.
-        Q.nextTick(loop);
+        asap(loop);
 
         // The promise
         return done.promise;
@@ -121,11 +126,13 @@ module.exports = (function () {
 
 
     function csnHigh() {
-        b.digitalWrite(csn_pin, b.HIGH);
+        //b.digitalWrite(csn_pin, b.HIGH);
+		csnGPIO.value(1);
     };
 
     function csnLow() {
-        b.digitalWrite(csn_pin, b.LOW);
+        //b.digitalWrite(csn_pin, b.LOW);
+		csnGPIO.value(0);
     };
 
 
@@ -138,11 +145,13 @@ module.exports = (function () {
     //void ce(int level)
 
     function ceHigh() {
-        b.digitalWrite(ce_pin, b.HIGH);
+        //b.digitalWrite(ce_pin, b.HIGH);
+		ceGPIO.value(1);
     };
 
     function ceLow() {
-        b.digitalWrite(ce_pin, b.LOW);
+        //b.digitalWrite(ce_pin, b.LOW);
+		ceGPIO.value(0);
     };
 
     /**
@@ -163,26 +172,27 @@ module.exports = (function () {
     //uint8_t read_register(uint8_t reg);
 
     function readRegister(reg, val, callback) {
-        console.log(reg);
-     //   console.log(val);
+        //console.log(reg);
+        //   console.log(val);
         csnLow();
         var buf1 = new Buffer(1 + val.length);
         buf1[0] = consts.READ_REGISTER | (consts.REGISTER_MASK & reg);
 
 
         for (var i = 0; i < val.length; i++) {
-            buf1[i + 1] = 0xff;//val[i];
+            buf1[i + 1] = 0xff; //val[i];
         }
-        console.log(buf1);
-        spi.transfer(buf1, buf1, function (device, buf) {
-            console.log(device);
-            console.log(buf);
-            
+        //console.log(buf1);
+        spi.transfer(buf1, buf1, function(device, buf) {
+          //  console.log(device);
+        //    console.log(buf);
+
             var rBuf = new Buffer(buf.length - 1);
             for (var i = 1; i < buf.length; i++) {
-                rBuf[i - 1] = buf[i];
+                rBuf[buf.length - i-1] = buf[i];
             }
             csnHigh();
+            
             callback(rBuf);
         });
     };
@@ -196,14 +206,18 @@ module.exports = (function () {
      */
     //uint8_t writeRegister(uint8_t reg, uint8_t value);
     function writeRegister(reg, buffer) {
+    //    console.log("reg "+reg);
+     //   console.log(buffer);
         csnLow();
         var b = new Buffer(1 + buffer.length);
-        b[0] = consts.WRITE_REGISTER | (consts.REGISTER_MASK & reg);
-
+        b[0] = consts.W_REGISTER | (consts.REGISTER_MASK & reg);
+//console.log(consts.W_REGISTER);
+//console.log(consts.REGISTER_MASK);
+//console.log("reg2="+b[0]);
         for (var i = 0; i < buffer.length; i++) {
-            b[i + 1] = buffer[i];
+            b[(buffer.length ) -i] = buffer[i];//ecriture inversée des bytes
         }
-
+//console.log(b);
         spi.write(b);
         csnHigh();
     };
@@ -221,7 +235,7 @@ module.exports = (function () {
     //uint8_t write_payload(const void* buf, uint8_t len, const uint8_t writeType);
     function write_payload(bufIn, writeType, callback) {
 
-        var data_len = min(bufIn.length, payload_size);
+        var data_len = Math.min(bufIn.length, payload_size);
 
 
         //printf("[Writing %u bytes %u blanks]",data_len,blank_len);
@@ -233,7 +247,7 @@ module.exports = (function () {
         }
         csnLow();
 
-        spi.transfer(buf1, new Buffer(buf1.length), function (device, buf) {
+        spi.transfer(buf1, new Buffer(buf1.length), function(device, buf) {
             csnHigh();
             callback();
         });
@@ -249,14 +263,13 @@ module.exports = (function () {
      * @return Current value of status register
      */
     //uint8_t read_payload(void* buf, uint8_t len);
-    function read_payload(callback) {
-        var data_len = payload_size;
+    function read_payload(data_len,callback) {
         //printf("[Reading %u bytes %u blanks]",data_len,blank_len);
         var buf = new Buffer(1 + data_len);
         buf[0] = consts.R_RX_PAYLOAD;
 
         csnLow();
-        spi.transfer(buf, buf, function (device, buf) {
+        spi.transfer(buf, buf, function(device, buf) {
             csnHigh();
             callback(buf);
         });
@@ -301,13 +314,13 @@ module.exports = (function () {
     //  uint8_t get_status(void);
     function get_status(callback) {
         csnLow();
+        
         var buf1 = new Buffer(1);
         buf1[0] = consts.NOP;
-        
 
-        spi.transfer(buf1, new Buffer(1), function (device, buf) {
+        spi.transfer(buf1, new Buffer(1), function(device, buf) {
             csnHigh();
-            callback(buf[1]);
+            callback(null,buf[0]);
         });
 
     };
@@ -321,7 +334,8 @@ module.exports = (function () {
      */
     //void print_status(uint8_t status);
     function print_status(status) {
-        console.log("STATUS\t\t = 0x" + status + " RX_DR=" + (status & _BV(consts.RX_DR)) ? 1 : 0 + " TX_DS=" + (status & _BV(consts.TX_DS)) ? 1 : 0 + " MAX_RT=" + (status & _BV(consts.MAX_RT)) ? 1 : 0 + " RX_P_NO=" + ((status >> consts.RX_P_NO) & parseInt('111', 2)) + " TX_FULL=" + (status & _BV(consts.TX_FULL)) ? 1 : 0);
+        console.log("STATUS\t\t = 0x" + ("00"+status.toString(16)).substr(-2) + " RX_DR=" + ((status & _BV(consts.RX_DR)) ? 1 : 0 )+ " TX_DS=" + ((status & _BV(consts.TX_DS)) ? 1 : 0 )+ " MAX_RT=" + ((status & _BV(consts.MAX_RT)) ? 1 : 0)
+        + " RX_P_NO=" + ((status >> consts.RX_P_NO) & parseInt('111', 2)) + " TX_FULL=" + ((status & _BV(consts.TX_FULL)) ? 1 : 0));
     };
 
 
@@ -351,14 +365,32 @@ module.exports = (function () {
      * @param qty How many successive registers to print
      */
     //void print_byte_register(const char* name, uint8_t reg, uint8_t qty = 1);
-    function print_byte_register(name, reg, callback) {
+    function print_byte_register(name, regs, callback) {
         var extra_tab = name.length < 8 ? '\t' : '';
-        readRegister(reg, new Buffer(1), function (result) {
-            console.log(name + "\t" + extra_tab + " =0x" + result[0].toString(16));
+        var numReg = 0;
+        var max = regs.length;
+        var string = '';
+        promiseWhile(function() {
+    
+            return numReg < max;
+        }, function() {
+            string += ' 0x';
+    
+            readRegister(regs[numReg], new Buffer(1), function(result) {
+                string += ("00"+result[0].toString(16)).substr(-2);
+    
+                numReg++;
+                return Q.delay(15);
+            });
+    
+    
+        }).then(function() {
+            console.log(name + "\t" + extra_tab + " =" + string);
             callback();
         });
+    
     };
-
+    
     /**
      * Print the name and value of a 40-bit address register to stdout
      *
@@ -371,15 +403,29 @@ module.exports = (function () {
      * @param qty How many successive registers to print
      */
     //void print_address_register(const char* name, uint8_t reg, uint8_t qty = 1);
-    function print_address_register(name, reg, callback) {
-        var extra_tab = name.length < 8 ? '\t' : '';
-        readRegister(reg, new Buffer(5), function (result) {
-            var string = '';
-            for (var i = 0; i < result.length; i++) {
-                string += result[i].toString(16);
-            }
-            console.log(name + "\t" + extra_tab + " =0x" + string);
+    //nrf.print_address_register = function(name, regs, callback) {
 
+            function print_address_register(name, regs, callback) {
+        var extra_tab = name.length < 8 ? '\t' : '';
+        var numReg = 0;
+        var max = regs.length;
+        var string='';
+        promiseWhile(function() {
+
+            return numReg < max;
+        }, function() {
+            string+=' 0x';
+            readRegister(regs[numReg], new Buffer(5), function(result) {
+                for (var i = 0; i < result.length; i++) {
+                    string += ("00"+result[i].toString(16)).substr(-2);
+                }
+                numReg++;
+                return Q.delay(15);
+            });
+
+
+        }).then(function() {
+            console.log(name + "\t" + extra_tab + " =" + string);
             callback();
         });
 
@@ -396,19 +442,19 @@ module.exports = (function () {
     function toggle_features(callback) {
         csnLow();
         spi.transfer(ACTIVATE);
-        Q().then(function () {
+        Q().then(function() {
             var deferred = Q.defer();
             var buf = new Buffer(1);
             buf[0] = consts.ACTIVATE;
             spi.transfer(buf, new Buffer(buf.length), deferred.makeNodeResolver());
             return deferred.promise;
-        }).then(function () {
+        }).then(function() {
             var deferred = Q.defer();
             var buf = new Buffer(1);
             buf[0] = 0x73;
             spi.transfer(buf, new Buffer(buf.length), deferred.makeNodeResolver());
             return deferred.promise;
-        }).then(function () {
+        }).then(function() {
             csnHigh();
             callback();
         });
@@ -426,12 +472,12 @@ module.exports = (function () {
      * @param _cspin The pin attached to Chip Select
      */
     //RF24(uint8_t _cepin, uint8_t _cspin);
-    nrf.RF24 = function (_spiDev, _cepin, _cspin) {
+    nrf.RF24 = function(_spiDev, _cepin, _cspin,_irqpin) {
 
         ce_pin = _cepin;
 
         csn_pin = _cspin;
-
+        irq_pin=_irqpin;
         spiDev = _spiDev;
         wide_band = false;
         p_variant = false;
@@ -447,15 +493,34 @@ module.exports = (function () {
      * Call this in setup(), before calling any other methods.
      */
     //void begin(void);
-    nrf.begin = function () {
+    nrf.setIrqCallback=function(callback){
+        irqCallback=callback;
+    }
+    nrf.begin = function() {
         // Initialize pins
-        b.pinMode(ce_pin, b.OUTPUT);
-        b.pinMode(csn_pin, b.OUTPUT);
+       // b.pinMode(ce_pin, b.OUTPUT);
+       // b.pinMode(csn_pin, b.OUTPUT);
+		ceGPIO=GPIO.connect(bone.pins[ce_pin].gpio);
+		ceGPIO.mode('out');
+		
+		csnGPIO=GPIO.connect(bone.pins[csn_pin].gpio);
+		csnGPIO.mode('out');
 
+	    irqGPIO=GPIO.connect(bone.pins[irq_pin].gpio);
+		irqGPIO.mode('in');
+		irqGPIO.on('fall',function(value){
+	//console.log("rise");
+		    if(irqCallback)
+		    irqCallback(value);
+		  
+		});
+		
         // Initialize SPI bus
-console.log(spiDev);
-        spi = new SPI.Spi(spiDev);
+      //  console.log(spiDev);
+        spi = new SPI.Spi(spiDev, {'mode': SPI.MODE['MODE_0'],});
+        
         spi.maxSpeed(10000000);
+        spi.bitOrder(false);
         spi.open();
 
 
@@ -471,7 +536,7 @@ console.log(spiDev);
         //delay(5);
         blockMicroseconds(TIMING["pece2csn"]);
 
-    /*    // Set 1500uS (minimum for 32B payload in ESB@250KBPS) timeouts, to make testing a little easier
+            // Set 1500uS (minimum for 32B payload in ESB@250KBPS) timeouts, to make testing a little easier
         // WARNING: If this is ever lowered, either 250KBS mode with AA is broken or maximum packet
         // sizes must never be used. See documentation for a more complete explanation.
         var buf = new Buffer(1);
@@ -497,15 +562,24 @@ console.log(spiDev);
 
         }).then(function (result) {
             var deferred = Q.defer();
+          // Then set the data rate to the slowest (and most reliable) speed supported by all
+            // hardware.
+            nrf.getDataRate(deferred.makeNodeResolver());
+            return deferred.promise;
+        })
+        .then(function (result) {
+            var deferred = Q.defer();
 
-            if (result) {
+            if (result ==consts.RF24_250KBPS) {
                 p_variant = true;
             }
             // Then set the data rate to the slowest (and most reliable) speed supported by all
             // hardware.
-            nrf.setDataRate(consts.RF24_1MBPS, deferred.makeNodeResolver());
+            nrf.setDataRate(consts.RF24_250KBPS, deferred.makeNodeResolver());
             return deferred.promise;
-        }).then(function (result) {
+        })
+        
+        .then(function (result) {
             var deferred = Q.defer();
             // Initialize CRC and request 2-byte (16bit) CRC
             nrf.setCRCLength(consts.RF24_CRC_16, deferred.makeNodeResolver());
@@ -530,18 +604,20 @@ console.log(spiDev);
             // Set up default configuration.  Callers can always change it later.
             // This channel should be universally safe and not bleed over into adjacent
             // spectrum.
-            nrf.setChannel(76);
+            //nrf.setChannel(76);
+              nrf.setChannel(37);
             // Flush buffers
             flush_rx();
             flush_tx();
 
           //  nrf.printDetails();
         }).catch(function (error) {
+              console.log("error");
             console.log(error);
         })
             .done();
 
-*/
+
 
 
 
@@ -556,8 +632,11 @@ console.log(spiDev);
      * isAvailable() to check for incoming traffic, and read() to get it.
      */
     //void startListening(void);
-    nrf.startListening = function (callback) {
-        var config = readRegister(consts.CONFIG, new Buffer(1), function (resultConfig) {
+    nrf.startListening = function(callback) {
+        var config = readRegister(consts.CONFIG, new Buffer(1), function(resultConfig) {
+          //  console.log("config ");
+           // console.log(resultConfig);
+            ;
             var buf = new Buffer(1);
             buf[0] = resultConfig[0] | _BV(consts.PWR_UP) | _BV(consts.PRIM_RX);
             writeRegister(consts.CONFIG, buf);
@@ -596,7 +675,7 @@ console.log(spiDev);
      * Do this before calling write().
      */
     //void stopListening(void);
-    nrf.stopListening = function () {
+    nrf.stopListening = function() {
         ceLow();
         flush_tx();
         flush_rx();
@@ -623,11 +702,11 @@ console.log(spiDev);
      * for multicast payloads, true only means it was transmitted.
      */
     //bool write( const void* buf, uint8_t len, const bool multicast=false );
-    nrf.write = function (buf, multicast, callback) {
+    nrf.write = function(buf, multicast, callback) {
         var result = false;
 
         // Begin the write
-        startWrite(buf, multicast, function () {
+        startWrite(buf, multicast, function() {
 
             // ------------
             // At this point we could return from a non-blocking write, and then call
@@ -643,21 +722,21 @@ console.log(spiDev);
             var hrTime = process.hrtime();
             var sent_at = hrTime[0] * 1000000 + hrTime[1] / 1000;
 
-            getMaxTimeout(function (timeoutResult) {
+            getMaxTimeout(function(timeoutResult) {
                 //us to wait for timeout
                 var timeout = timeoutResult;
-                promiseWhile(function () {
+                promiseWhile(function() {
                     var hrTime = process.hrtime();
                     var micro = hrTime[0] * 1000000 + hrTime[1] / 1000;
                     return (!((_BV(consts.TX_DS) | _BV(consts.MAX_RT))) && (micro - sent_at < timeout));
-                }, function () {
+                }, function() {
                     // Monitor the send
-                    readRegister(consts.OBSERVE_TX, new Buffer(1), function (result) {
+                    readRegister(consts.OBSERVE_TX, new Buffer(1), function(result) {
                         observe_tx = result;
                         return Q.delay(10);
                     });
 
-                }).then(function () {
+                }).then(function() {
 
                     // The part above is what you could recreate with your own interrupt handler,
                     // and then call this when you got an interrupt
@@ -669,7 +748,7 @@ console.log(spiDev);
                     // * The send failed, too many retries (MAX_RT)
                     // * There is an ack packet waiting (RX_DR)
 
-                    whatHappened(function (what) {
+                    whatHappened(function(err,what) {
 
                         //printf("%u%u%u\r\n",tx_ok,tx_fail,ack_payload_available);
 
@@ -680,15 +759,16 @@ console.log(spiDev);
                         // Handle the ack packet
                         if (ack_payload_available) {
                             ack_payload_length = getDynamicPayloadSize(
-                                function (ack_size) {
-                                    ack_payload_length = ack_size;
-                                    callback(result);
-                                    //IF_SERIAL_DEBUG(Serial.print("[AckPacket]/"));
-                                    //IF_SERIAL_DEBUG(Serial.println(ack_payload_length, DEC));    
-                                }
-                            );
 
-                        } else {
+                            function(ack_size) {
+                                ack_payload_length = ack_size;
+                                callback(result);
+                                //IF_SERIAL_DEBUG(Serial.print("[AckPacket]/"));
+                                //IF_SERIAL_DEBUG(Serial.println(ack_payload_length, DEC));    
+                            });
+
+                        }
+                        else {
 
                             calback(result);
                         }
@@ -714,15 +794,14 @@ console.log(spiDev);
      */
     //bool available(uint8_t* pipe_num);
     //bool available(void);
-    nrf.available = function (callback) {
-        get_status(function (status) {
-
+    nrf.available = function(callback) {
+        get_status(function(err,status) {
             // Too noisy, enable if you really want lots o data!!
             //IF_SERIAL_DEBUG(print_status(status));
 
             var result = (status & _BV(consts.RX_DR));
-
-            if (result) {
+  
+if (result) {
 
                 // Clear the status bit
 
@@ -741,7 +820,7 @@ console.log(spiDev);
                 }
             }
 
-            callback(result);
+            callback(null,result);
         });
     };
 
@@ -760,11 +839,24 @@ console.log(spiDev);
      * @return True if the payload was delivered successfully false if not
      */
     //bool read( void* buf, uint8_t len );
-    nrf.read = function (callback) {
-        read_payload(function (buf) {
-            readRegister(consts.FIFO_STATUS, new Buffer(1), function (resultFIFO) {
-                // was this the last of the data available?        
-                callback(resultFIFO & _BV(consts.RX_EMPTY), buf);
+    nrf.read = function(size,callback) {
+        read_payload(size,function(buf) {
+            readRegister(consts.FIFO_STATUS, new Buffer(1), function(resultFIFO) {
+                // was this the last of the data available?  
+                var result={};
+                result.done=resultFIFO[0] & _BV(consts.RX_EMPTY);
+                var buf2=buf.slice(1);
+              //  console.log(buf2);
+                result.buf=new Buffer(size);
+                
+                for(var i =0;i<buf.length;i++){
+                    result.buf[i]=buf2[buf.length-2-i];
+                    
+                
+                }
+                result.buf=buf2;
+              //  console.log(result.buf);
+                callback(null,result);
             });
         });
 
@@ -791,7 +883,7 @@ console.log(spiDev);
      * addresses amongst nodes on the network.
      */
     //void openWritingPipe(uint64_t address);
-    nrf.openWritingPipe = function (address) {
+    nrf.openWritingPipe = function(address) {
         // Note that AVR 8-bit uC's store this LSB first, and the NRF24L01(+)
         // expects it LSB first too, so we're good.
         var buf = new Buffer(5);
@@ -803,7 +895,7 @@ console.log(spiDev);
 
         var max_payload_size = 32;
         var bufPay = new Buffer(1);
-        bufPay[0] = min(payload_size, max_payload_size);
+        bufPay[0] = Math.min(payload_size, max_payload_size);
         writeRegister(consts.RX_PW_P0, bufPay);
     };
 
@@ -835,12 +927,12 @@ console.log(spiDev);
      * @param address The 40-bit address of the pipe to open.
      */
     //void openReadingPipe(uint8_t number, uint64_t address);
-    nrf.openReadingPipe = function (child, address, callback) {
+    nrf.openReadingPipe = function(child, address, callback) {
         // If this is pipe 0, cache the address.  This is needed because
         // openWritingPipe() will overwrite the pipe 0 address, so
         // startListening() will have to restore it.
-        if (child == 0)
-            pipe0_reading_address = address;
+        
+        if (child == 0) pipe0_reading_address = address;
 
         if (child <= 6) {
             // For pipes 2-5, only write the LSB
@@ -849,8 +941,11 @@ console.log(spiDev);
                 for (var i = 0; i < address.length; i++) {
                     buf[i] = address[i];
                 }
+              //  console.log(buf);
+              //  console.log(child_pipe[child]);
                 writeRegister(child_pipe[child], buf);
-            } else {
+            }
+            else {
                 var buf = new Buffer(1);
                 //FIXME voir si c'est le Premier ou de dernier octet qui doit etre passé
                 buf[0] = address[4];
@@ -863,10 +958,18 @@ console.log(spiDev);
             // Note it would be more efficient to set all of the bits for all open
             // pipes at once.  However, I thought it would make the calling code
             // more simple to do it this way.
-            readRegister(consts.EN_RXADDR, new Buffer(1), function (resultRX) {
+            readRegister(consts.EN_RXADDR, new Buffer(1), function(resultRX) {
                 var buf = new Buffer(1);
-                buf[0] = resultRX | _BV(child_pipe_enable[child]);
+           //     console.log("res");
+            //    console.log(resultRX);
+            //    console.log(child);
+            //    console.log(child_pipe_enable[child]);
+                
+                buf[0] = resultRX[0] | _BV(child_pipe_enable[child]);
+                buf[0] =3;
                 writeRegister(consts.EN_RXADDR, buf);
+            //    console.log("buf");
+            //    console.log(buf);
                 callback();
             });
         }
@@ -879,8 +982,8 @@ console.log(spiDev);
      * @param pipe Which pipe # to close, 0-5.
      */
     //void closeReadingPipe( uint8_t pipe ) ;
-    nrf.closeReadingPipe = function (pipe, callback) {
-        readRegister(consts.EN_RXADDR, new Buffer(1), function (resultRX) {
+    nrf.closeReadingPipe = function(pipe, callback) {
+        readRegister(consts.EN_RXADDR, new Buffer(1), function(resultRX) {
             var buf = new Buffer(1);
             buf[0] = resultRX & ~_BV(child_pipe_enable[pipe]);
             writeRegister(consts.EN_RXADDR, buf);
@@ -909,7 +1012,7 @@ console.log(spiDev);
      * @param count How many retries before giving up, max 15
      */
     //void setRetries(uint8_t delay, uint8_t count);
-    nrf.setRetries = function (delay, count) {
+    nrf.setRetries = function(delay, count) {
         var buf = new Buffer(1);
         buf[0] = (delay & 0xf) << consts.ARD | (count & 0xf) << consts.ARC;
         writeRegister(consts.SETUP_RETR, buf);
@@ -924,9 +1027,9 @@ console.log(spiDev);
      * translates as 0=250us, 15=4000us, in bit multiples of 250us.
      */
     //uint8_t getRetries( void ) ;
-    nrf.getRetries = function (callback) {
+    nrf.getRetries = function(callback) {
 
-        readRegister(consts.SETUP_RETR, new Buffer(1), function (resultRetr) {
+        readRegister(consts.SETUP_RETR, new Buffer(1), function(resultRetr) {
             callback(resultRetr[0]);
         });
     };
@@ -937,7 +1040,7 @@ console.log(spiDev);
      * @param channel Which RF channel to communicate on, 0-127
      */
     //void setChannel(uint8_t channel);
-    nrf.setChannel = function (channel) {
+    nrf.setChannel = function(channel) {
         // TODO: This method could take advantage of the 'wide_band' calculation
         // done in setChannel() to require certain channel spacing.
 
@@ -953,9 +1056,9 @@ console.log(spiDev);
      * @param channel To which RF channel radio is current tuned, 0-127
      */
     //uint8_t getChannel(void);
-    nrf.getChannel = function (callback) {
-        
-        readRegister(consts.RF_CH, new Buffer(1), function (resultCH) {
+    nrf.getChannel = function(callback) {
+
+        readRegister(consts.RF_CH, new Buffer(1), function(resultCH) {
             callback(resultCH[0]);
         });
     };
@@ -973,9 +1076,9 @@ console.log(spiDev);
      * @param size The number of bytes in the payload
      */
     //void setPayloadSize(uint8_t size);
-    nrf.setPayloadSize = function (size) {
+    nrf.setPayloadSize = function(size) {
         var max_payload_size = 32;
-        payload_size = min(size, max_payload_size);
+        payload_size = Math.min(size, max_payload_size);
 
 
 
@@ -989,7 +1092,7 @@ console.log(spiDev);
      * @return The number of bytes in the payload
      */
     //uint8_t getPayloadSize(void);
-    nrf.getPayloadSize = function () {
+    nrf.getPayloadSize = function() {
         return payload_size;
 
     };
@@ -1003,14 +1106,17 @@ console.log(spiDev);
      * @return Payload length of last-received dynamic payload
      */
     //uint8_t getDynamicPayloadSize(void);
-    nrf.getDynamicPayloadSize = function (callback) {
+    nrf.getDynamicPayloadSize = function(callback) {
 
-        var buf = new Buffer(1);
+        var buf = new Buffer(2);
         buf[0] = consts.R_RX_PL_WID;
+        buf[1]=0xff;
         csnLow();
-        spi.transfer(buf1, new Buffer(1), function (device, buf) {
+        spi.transfer(buf, new Buffer(2), function(device, bufRes) {
             csnHigh();
-            callback(buf[0]);
+            callback(null,bufRes[1]);
+        
+
         });
 
     };
@@ -1026,11 +1132,11 @@ console.log(spiDev);
      * @see examples/pingpair_pl/pingpair_pl.pde
      */
     //void enableAckPayload(void);
-    nrf.enableAckPayload = function (callback) {
+    nrf.enableAckPayload = function(callback) {
         //
         // enable ack payload and dynamic payload features
         //
-        readRegister(consts.FEATURE, new Buffer(1), function (featureResult) {
+        readRegister(consts.FEATURE, new Buffer(1), function(featureResult) {
             var buf = new Buffer(1);
             buf[0] = featureResult | _BV(consts.EN_DYN_ACK) | _BV(consts.EN_ACK_PAY) | _BV(consts.EN_DPL);
             writeRegister(consts.FEATURE, buf);
@@ -1050,7 +1156,7 @@ console.log(spiDev);
             //
             // Enable dynamic payload on pipes 0 & 1
             //
-            readRegister(consts.DYNPD, new Buffer(1), function (dynPDResult) {
+            readRegister(consts.DYNPD, new Buffer(1), function(dynPDResult) {
                 var buf = new Buffer(1);
                 buf[0] = dynPDResult | _BV(consts.DPL_P1) | _BV(consts.DPL_P0);
                 write_register(consts.DYNPD, buf);
@@ -1068,9 +1174,9 @@ console.log(spiDev);
      * @see examples/pingpair_pl/pingpair_dyn.pde
      */
     //void enableDynamicPayloads(void);
-    nrf.enableDynamicPayloads = function (callback) {
+    nrf.enableDynamicPayloads = function(callback) {
         // Enable dynamic payload throughout the system
-        readRegister(consts.FEATURE, new Buffer(1), function (featureResult) {
+        readRegister(consts.FEATURE, new Buffer(1), function(featureResult) {
             var buf = new Buffer(1);
             buf[0] = featureResult | _BV(consts.EN_DPL);
             writeRegister(consts.FEATURE, buf);
@@ -1090,7 +1196,7 @@ console.log(spiDev);
             //
             // Not sure the use case of only having dynamic payload on certain
             // pipes, so the library does not support it.
-            readRegister(consts.DYNPD, new Buffer(1), function (dynPDResult) {
+            readRegister(consts.DYNPD, new Buffer(1), function(dynPDResult) {
                 var buf = new Buffer(1);
                 buf[0] = dynPDResult | _BV(consts.DPL_P5) | _BV(consts.DPL_P4) | _BV(consts.DPL_P3) | _BV(consts.DPL_P2) | _BV(consts.DPL_P1) | _BV(consts.DPL_P0);
                 writeRegister(consts.DYNPD, buf);
@@ -1108,7 +1214,7 @@ console.log(spiDev);
      * if its not.
      */
     //bool isPVariant(void) ;
-    nrf.isPVariant = function () {
+    nrf.isPVariant = function() {
         return p_variant;
 
     };
@@ -1133,27 +1239,27 @@ console.log(spiDev);
      * @param enable Whether to enable (true) or disable (false) auto-acks
      */
     //void setAutoAck( uint8_t pipe, bool enable ) ;
-    nrf.setAutoAck = function (pipe, enable, callback) {
+    nrf.setAutoAck = function(pipe, enable, callback) {
         //cas setAutoAck(bool enable);
         if (callback == undefined) {
             callback = enable;
             enable = pipe;
             var buf = new Buffer(1)
-            if (enable)
-                buf[0] = parseInt('111111', 2);
-            else
-                buf[0] = 0;
+            if (enable) buf[0] = parseInt('111111', 2);
+            else buf[0] = 0;
 
             writeRegister(consts.EN_AA, buf);
             callback();
-        } else {
+        }
+        else {
             //cas //void setAutoAck( uint8_t pipe, bool enable ) ;
             if (pipe <= 6) {
 
-                var en_aa = readRegister(consts.EN_AA, new Buffer(1), function (resultEnAA) {
+                var en_aa = readRegister(consts.EN_AA, new Buffer(1), function(resultEnAA) {
                     if (enable) {
                         en_aa = resultEnAA[0] | _BV(pipe);
-                    } else {
+                    }
+                    else {
                         en_aa = resultEnAA[0] & ~_BV(pipe);
                     }
                     var buf = new Buffer(1);
@@ -1176,30 +1282,37 @@ console.log(spiDev);
      * @param level Desired PA level.
      */
     //void setPALevel( rf24_pa_dbm_e level ) ;
-    nrf.setPALevel = function (level, callback) {
-
-        var setup = readRegister(consts.RF_SETUP, new Buffer(1), function (result) {
-
-            setup = result[0] & ~(_BV(consts.RF_PWR_LOW) | _BV(consts.RF_PWR_HIGH));
-
+    nrf.setPALevel = function(level, callback) {
+//console.log(level);
+        var setup = readRegister(consts.RF_SETUP, new Buffer(1), function(result) {
+//console.log(result);
+            setup = result[0] & ~ (_BV(consts.RF_PWR_LOW) | _BV(consts.RF_PWR_HIGH));
+//console.log(setup);
             // switch uses RAM (evil!)
             if (level == consts.RF24_PA_MAX) {
                 setup = setup | (_BV(consts.RF_PWR_LOW) | _BV(consts.RF_PWR_HIGH));
-            } else if (level == consts.RF24_PA_HIGH) {
-                setup = _setup | BV(consts.RF_PWR_HIGH);
-            } else if (level == consts.RF24_PA_LOW) {
+            }
+            else if (level == consts.RF24_PA_HIGH) {
+                setup = setup | _BV(consts.RF_PWR_HIGH);
+            }
+            else if (level == consts.RF24_PA_LOW) {
+  //              console.log("LOW");
                 setup = setup | _BV(consts.RF_PWR_LOW);
-            } else if (level == consts.RF24_PA_MIN) {
+//console.log(setup);
+            }
+            else if (level == consts.RF24_PA_MIN) {
                 // nothing
-            } else if (level == consts.RF24_PA_ERROR) {
+            }
+            else if (level == consts.RF24_PA_ERROR) {
                 // On error, go to maximum PA
                 setup = setup | (_BV(consts.RF_PWR_LOW) | _BV(consts.RF_PWR_HIGH));
             }
 
             var buf = new Buffer(1);
             buf[0] = setup;
+    //        console.log(buf);
             writeRegister(consts.RF_SETUP, buf);
-            callback();
+            callback(null);
         });
 
     };
@@ -1213,23 +1326,26 @@ console.log(spiDev);
      * return value descriptions.
      */
     //rf24_pa_dbm_e getPALevel( void ) ;
-    nrf.getPALevel = function (callback) {
-        readRegister(consts.RF_SETUP, new Buffer(1), function (resultSetup) {
+    nrf.getPALevel = function(callback) {
+        readRegister(consts.RF_SETUP, new Buffer(1), function(resultSetup) {
             var result = consts.RF24_PA_ERROR;
             var power = resultSetup[0] & (_BV(consts.RF_PWR_LOW) | _BV(consts.RF_PWR_HIGH));
 
             // switch uses RAM (evil!)
             if (power == (_BV(consts.RF_PWR_LOW) | _BV(consts.RF_PWR_HIGH))) {
                 result = consts.RF24_PA_MAX;
-            } else if (power == _BV(consts.RF_PWR_HIGH)) {
+            }
+            else if (power == _BV(consts.RF_PWR_HIGH)) {
                 result = consts.RF24_PA_HIGH;
-            } else if (power == _BV(consts.RF_PWR_LOW)) {
+            }
+            else if (power == _BV(consts.RF_PWR_LOW)) {
                 result = consts.RF24_PA_LOW;
-            } else {
+            }
+            else {
                 result = consts.RF24_PA_MIN;
             }
 
-            callback(result);
+            callback(null,result);
         });
     };
 
@@ -1242,26 +1358,28 @@ console.log(spiDev);
      * @return true if the change was successful
      */
     //bool setDataRate(rf24_datarate_e speed);
-    nrf.setDataRate = function (speed, callback) {
+    nrf.setDataRate = function(speed, callback) {
 
 
-        var setup = readRegister(consts.RF_SETUP, new Buffer(1), function (resultSetup) {
+        var setup = readRegister(consts.RF_SETUP, new Buffer(1), function(resultSetup) {
 
             // HIGH and LOW '00' is 1Mbs - our default
             wide_band = false;
-            setup = resultSetup[0] & ~(_BV(consts.RF_DR_LOW) | _BV(consts.RF_DR_HIGH));
+            setup = resultSetup[0] & ~ (_BV(consts.RF_DR_LOW) | _BV(consts.RF_DR_HIGH));
             if (speed == consts.RF24_250KBPS) {
                 // Must set the RF_DR_LOW to 1; RF_DR_HIGH (used to be RF_DR) is already 0
                 // Making it '10'.
                 wide_band = false;
                 setup = setup | _BV(consts.RF_DR_LOW);
-            } else {
+            }
+            else {
                 // Set 2Mbs, RF_DR (RF_DR_HIGH) is set 1
                 // Making it '01'
                 if (speed == consts.RF24_2MBPS) {
                     wide_band = true;
                     setup = setup | _BV(consts.RF_DR_HIGH);
-                } else {
+                }
+                else {
                     // 1Mbs
                     wide_band = false;
                 }
@@ -1272,16 +1390,17 @@ console.log(spiDev);
 
             // Verify our result
 
-            readRegister(consts.RF_SETUP, new Buffer(1), function (resultSetup2) {
+            readRegister(consts.RF_SETUP, new Buffer(1), function(resultSetup2) {
                 var result = false;
                 if (resultSetup2[0] == setup) {
                     result = true;
-                } else {
+                }
+                else {
                     wide_band = false;
                 }
 
 
-                callback(result);
+                callback(null,result);
             });
         });
     };
@@ -1294,24 +1413,33 @@ console.log(spiDev);
      * rf24_datarate_e enum.
      */
     //rf24_datarate_e getDataRate( void ) ;
-    nrf.getDataRate = function (callback) {
-        readRegister(consts.RF_SETUP, new Buffer(1), function (resultSetup) {
+    nrf.getDataRate = function(callback) {
+        readRegister(consts.RF_SETUP, new Buffer(1), function(resultSetup) {
+     //       console.log("###");
+      //      console.log(resultSetup[0]);
             var result;
             var dr = resultSetup[0] & (_BV(consts.RF_DR_LOW) | _BV(consts.RF_DR_HIGH));
-
+        //    console.log(dr);
             // switch uses RAM (evil!)
             // Order matters in our case below
             if (dr == _BV(consts.RF_DR_LOW)) {
                 // '10' = 250KBPS
+          //      console.log("250");
                 result = consts.RF24_250KBPS;
-            } else if (dr == _BV(consts.RF_DR_HIGH)) {
+            //console.log(result);
+            }
+            else if (dr == _BV(consts.RF_DR_HIGH)) {
+            //    console.log("2M");
                 // '01' = 2MBPS
                 result = consts.RF24_2MBPS;
-            } else {
+            }
+            else {
+             //   console.log("1M");
                 // '00' = 1MBPS
                 result = consts.RF24_1MBPS;
             }
-            callback(result);
+        //    console.log(result);
+            callback(null,result);
         });
     };
 
@@ -1321,24 +1449,26 @@ console.log(spiDev);
      * @param length RF24_CRC_8 for 8-bit or RF24_CRC_16 for 16-bit
      */
     //void setCRCLength(rf24_crclength_e length);
-    nrf.setCRCLength = function (length, callback) {
-        var config = readRegister(consts.CONFIG, new Buffer(1), function (result) {
+    nrf.setCRCLength = function(length, callback) {
+        var config = readRegister(consts.CONFIG, new Buffer(1), function(result) {
 
-            config = result[0] & ~(_BV(consts.CRCO) | _BV(consts.EN_CRC));
+            config = result[0] & ~ (_BV(consts.CRCO) | _BV(consts.EN_CRC));
 
             // switch uses RAM (evil!)
             if (length == consts.RF24_CRC_DISABLED) {
                 // Do nothing, we turned it off above. 
-            } else if (length == consts.RF24_CRC_8) {
+            }
+            else if (length == consts.RF24_CRC_8) {
                 config = config | _BV(consts.EN_CRC);
-            } else {
+            }
+            else {
                 config = config | _BV(consts.EN_CRC);
                 config = config | _BV(consts.CRCO);
             }
             var buf = new Buffer(1);
             buf[0] = config;
             writeRegister(consts.CONFIG, buf);
-            callback();
+            callback(null);
         });
     };
 
@@ -1348,19 +1478,17 @@ console.log(spiDev);
      * @return RF24_DISABLED if disabled or RF24_CRC_8 for 8-bit or RF24_CRC_16 for 16-bit
      */
     //rf24_crclength_e getCRCLength(void);
-    nrf.getCRCLength = function (callback) {
-        readRegister(consts.CONFIG, new Buffer(1), function (resultConfig) {
+    nrf.getCRCLength = function(callback) {
+        readRegister(consts.CONFIG, new Buffer(1), function(resultConfig) {
             var result = consts.RF24_CRC_DISABLED;
             var config = resultConfig[0] & (_BV(consts.CRCO) | _BV(consts.EN_CRC));
 
             if (config & _BV(consts.EN_CRC)) {
-                if (config & _BV(consts.CRCO))
-                    result = consts.RF24_CRC_16;
-                else
-                    result = consts.RF24_CRC_8;
+                if (config & _BV(consts.CRCO)) result = consts.RF24_CRC_16;
+                else result = consts.RF24_CRC_8;
             }
 
-            callback(result);
+            callback(null,result);
         });
     };
 
@@ -1369,8 +1497,8 @@ console.log(spiDev);
      *
      */
     //void disableCRC( void ) ;
-    nrf.disableCRC = function (callback) {
-        readRegister(consts.CONFIG, new Buffer(1), function (resultConfig) {
+    nrf.disableCRC = function(callback) {
+        readRegister(consts.CONFIG, new Buffer(1), function(resultConfig) {
             var disable = resultConfig[0] & ~_BV(consts.EN_CRC);
             var buf = new Buffer(1);
             buf[0] = disable;
@@ -1394,137 +1522,94 @@ console.log(spiDev);
      * @warning Does nothing if stdout is not defined.  See fdevopen in stdio.h
      */
     //void printDetails(void);
-    nrf.printDetails = function () {
+    nrf.printDetails = function() {
 
-        Q().then(function () {
+        Q().then(function() {
             var deferred = Q.defer();
             get_status(deferred.makeNodeResolver());
             return deferred.promise;
-        }).then(function (status) {
-             var deferred = Q.defer();
+        }).then(function(status) {
+            var deferred = Q.defer();
+            
             print_status(status);
             deferred.resolve();
             return deferred.promise;
-        }).then(function () {
-             var deferred = Q.defer();
-            print_address_register("RX_ADDR_P0", consts.RX_ADDR_P0, deferred.makeNodeResolver());
+        }).then(function() {
+            var deferred = Q.defer();
+            print_address_register("RX_ADDR_P0-1", [consts.RX_ADDR_P0,consts.RX_ADDR_P1], deferred.makeNodeResolver());
             return deferred.promise;
-        }).then(function () {
-             var deferred = Q.defer();
-            print_address_register("RX_ADDR_P1", consts.RX_ADDR_P1, deferred.makeNodeResolver());
+        }).then(function() {
+            var deferred = Q.defer();
+            print_byte_register("RX_ADDR_P2-5", [consts.RX_ADDR_P2,consts.RX_ADDR_P3,consts.RX_ADDR_P4,consts.RX_ADDR_P5], deferred.makeNodeResolver());
             return deferred.promise;
-        }).then(function () {
-             var deferred = Q.defer();
-            print_byte_register("RX_ADDR_P2", consts.RX_ADDR_P2, deferred.makeNodeResolver());
+        }).then(function() {
+            var deferred = Q.defer();
+            print_address_register("TX_ADDR", [consts.TX_ADDR], deferred.makeNodeResolver());
             return deferred.promise;
-        }).then(function () {
-             var deferred = Q.defer();
-            print_byte_register("RX_ADDR_P3", consts.RX_ADDR_P3, deferred.makeNodeResolver());
+        }).then(function() {
+            var deferred = Q.defer();
+            print_byte_register("RX_PW_P0-5", [consts.RX_PW_P0, consts.RX_PW_P1, consts.RX_PW_P2, consts.RX_PW_P3, consts.RX_PW_P4, consts.RX_PW_P5], deferred.makeNodeResolver());
             return deferred.promise;
-        }).then(function () {
-             var deferred = Q.defer();
-            print_byte_register("RX_ADDR_P4", consts.RX_ADDR_P4, deferred.makeNodeResolver());
+        }).then(function() {
+            var deferred = Q.defer();
+            print_byte_register("EN_AA", [consts.EN_AA], deferred.makeNodeResolver());
             return deferred.promise;
-        }).then(function () {
-             var deferred = Q.defer();
-            print_byte_register("RX_ADDR_P5", consts.RX_ADDR_P5, deferred.makeNodeResolver());
+        }).then(function() {
+            var deferred = Q.defer();
+            print_byte_register("EN_RXADDR", [consts.EN_RXADDR], deferred.makeNodeResolver());
             return deferred.promise;
-        }).then(function () {
-             var deferred = Q.defer();
-            print_address_register("TX_ADDR", consts.TX_ADDR, deferred.makeNodeResolver());
+        }).then(function() {
+            var deferred = Q.defer();
+            print_byte_register("RF_CH", [consts.RF_CH], deferred.makeNodeResolver());
             return deferred.promise;
-        }).then(function () {
-             var deferred = Q.defer();
-            print_byte_register("RX_PW_P0", consts.RX_PW_P0, deferred.makeNodeResolver());
+        }).then(function() {
+            var deferred = Q.defer();
+            print_byte_register("RF_SETUP", [consts.RF_SETUP], deferred.makeNodeResolver());
             return deferred.promise;
-        }).then(function () {
-             var deferred = Q.defer();
-            print_byte_register("RX_PW_P1", consts.RX_PW_P1, deferred.makeNodeResolver());
+        }).then(function() {
+            var deferred = Q.defer();
+            print_byte_register("CONFIG", [consts.CONFIG], deferred.makeNodeResolver());
             return deferred.promise;
-        }).then(function () {
-             var deferred = Q.defer();
-            print_byte_register("RX_PW_P2", consts.RX_PW_P2, deferred.makeNodeResolver());
+        }).then(function() {
+            var deferred = Q.defer();
+            print_byte_register("DYNPD/FEATURE", [consts.DYNPD,consts.FEATURE], deferred.makeNodeResolver());
             return deferred.promise;
-        }).then(function () {
-             var deferred = Q.defer();
-            print_byte_register("RX_PW_P3", consts.RX_PW_P3, deferred.makeNodeResolver());
-            return deferred.promise;
-        }).then(function () {
-             var deferred = Q.defer();
-            print_byte_register("RX_PW_P4", consts.RX_PW_P4, deferred.makeNodeResolver());
-            return deferred.promise;
-        }).then(function () {
-             var deferred = Q.defer();
-            print_byte_register("RX_PW_P5", consts.RX_PW_P5, deferred.makeNodeResolver());
-            return deferred.promise;
-        }).then(function () {
-             var deferred = Q.defer();
-            print_byte_register("RX_PW_P6", consts.RX_PW_P6, deferred.makeNodeResolver());
-            return deferred.promise;
-        }).then(function () {
-             var deferred = Q.defer();
-            print_byte_register("EN_AA", consts.EN_AA, deferred.makeNodeResolver());
-            return deferred.promise;
-        }).then(function () {
-             var deferred = Q.defer();
-            print_byte_register("EN_RXADDR", consts.EN_RXADDR, deferred.makeNodeResolver());
-            return deferred.promise;
-        }).then(function () {
-             var deferred = Q.defer();
-            print_byte_register("RF_CH", consts.RF_CH, deferred.makeNodeResolver());
-            return deferred.promise;
-        }).then(function () {
-             var deferred = Q.defer();
-            print_byte_register("RF_SETUP", consts.RF_SETUP, deferred.makeNodeResolver());
-            return deferred.promise;
-        }).then(function () {
-             var deferred = Q.defer();
-            print_byte_register("CONFIG", consts.CONFIG, deferred.makeNodeResolver());
-            return deferred.promise;
-        }).then(function () {
-             var deferred = Q.defer();
-            print_byte_register("DYNPD", consts.DYNPD, deferred.makeNodeResolver());
-            return deferred.promise;
-        }).then(function () {
-             var deferred = Q.defer();
-            print_byte_register("FEATURE", consts.FEATURE, deferred.makeNodeResolver());
-            return deferred.promise;
-        }).then(function () {
+        }).then(function() {
             var deferred = Q.defer();
             nrf.getDataRate(deferred.makeNodeResolver());
             return deferred.promise;
-        }).then(function (dataRate) {
-             var deferred = Q.defer();
+        }).then(function(dataRate) {
+            var deferred = Q.defer();
             console.log("Data Rate\t = " + rf24_datarate_e_str_P[dataRate]);
             deferred.resolve();
             return deferred.promise;
-        }).then(function () {
-             var deferred = Q.defer();
-            console.log("Model\t\t = " + rf24_model_e_str_P[nrf.isPVariant()]);
+        }).then(function() {
+            var deferred = Q.defer();
+            console.log("Model\t\t = " + rf24_model_e_str_P[nrf.isPVariant()?1:0]);
             deferred.resolve();
             return deferred.promise;
-        }).then(function () {
+        }).then(function() {
             var deferred = Q.defer();
             nrf.getCRCLength(deferred.makeNodeResolver());
             return deferred.promise;
-        }).then(function (crc) {
-             var deferred = Q.defer();
+        }).then(function(crc) {
+            var deferred = Q.defer();
             console.log("CRC Length\t = " + rf24_crclength_e_str_P[crc]);
             deferred.resolve();
             return deferred.promise;
-        }).then(function () {
+        }).then(function() {
             var deferred = Q.defer();
             nrf.getPALevel(deferred.makeNodeResolver());
             return deferred.promise;
-        }).then(function (pa) {
-             var deferred = Q.defer();
+        }).then(function(pa) {
+            var deferred = Q.defer();
             console.log("PA Power\t = " + rf24_pa_dbm_e_str_P[pa]);
             deferred.resolve();
             return deferred.promise;
-        }).catch(function (error) {
-            console.log(error);
-        })
-            .done();
+        }).
+        catch (function(error) {
+            console.log("kkk");console.log(error);
+        }).done();
 
 
 
@@ -1537,8 +1622,8 @@ console.log(spiDev);
      * startListening, or powerUp().
      */
     //void powerDown(void);
-    nrf.powerDown = function (callback) {
-        readRegister(consts.CONFIG, new Buffer(1), function (configResult) {
+    nrf.powerDown = function(callback) {
+        readRegister(consts.CONFIG, new Buffer(1), function(configResult) {
             var buf = new Buffer(1);
             buf[0] = configResult[0] & ~_BV(consts.PWR_UP);
             writeRegister(consts.CONFIG, buf);
@@ -1553,8 +1638,8 @@ console.log(spiDev);
      * To return to low power mode, call powerDown().
      */
     //void powerUp(void) ;
-    nrf.powerUp = function (callback) {
-        readRegister(consts.CONFIG, new Buffer(1), function (configResult) {
+    nrf.powerUp = function(callback) {
+        readRegister(consts.CONFIG, new Buffer(1), function(configResult) {
             var buf = new Buffer(1);
             buf[0] = configResult[0] | _BV(consts.PWR_UP);
             writeRegister(consts.CONFIG, buf);
@@ -1579,8 +1664,8 @@ console.log(spiDev);
      * @param multicast true or false. True, buffer will be multicast; ignoring retry/timeout
      */
     //void startWrite( const void* buf, uint8_t len, const bool multicast=false );
-    nrf.startWrite = function (bufIn, multicast, callback) {
-        readRegister(consts.CONFIG, new Buffer(1), function (resultConfig) {
+    nrf.startWrite = function(bufIn, multicast, callback) {
+        readRegister(consts.CONFIG, new Buffer(1), function(resultConfig) {
             // Transmitter power-up
             var buf = new Buffer(1);
             buf[0] = (resultConfig | _BV(consts.PWR_UP)) & ~_BV(consts.PRIM_RX);
@@ -1588,14 +1673,14 @@ console.log(spiDev);
 
             // Send the payload - Unicast (W_TX_PAYLOAD) or multicast (W_TX_PAYLOAD_NO_ACK)
             write_payload(bufIn,
-                multicast ? consts.W_TX_PAYLOAD_NO_ACK : consts.W_TX_PAYLOAD, function (result) {
+            multicast ? consts.W_TX_PAYLOAD_NO_ACK : consts.W_TX_PAYLOAD, function(result) {
 
-                    // Allons!
-                    ceHigh();
-                    blockMicroseconds(TIMING["hce"]);
-                    ceLow();
-                    callback();
-                });
+                // Allons!
+                ceHigh();
+                blockMicroseconds(TIMING["hce"]);
+                ceLow();
+                callback();
+            });
 
 
         });
@@ -1618,7 +1703,7 @@ console.log(spiDev);
      * by the static payload set by setPayloadSize().
      */
     //void writeAckPayload(uint8_t pipe, const void* buf, uint8_t len);
-    nrf.writeAckPayload = function (pipe, buf, callback) {
+    nrf.writeAckPayload = function(pipe, buf, callback) {
         csnLow();
         var buf1 = new Buffer(1 + buf.length);
         buf1[0] = consts.W_ACK_PAYLOAD | (pipe & parseInt('111', 2));
@@ -1626,7 +1711,7 @@ console.log(spiDev);
         for (var i = 0; i < buf.length; i++) {
             buf1[i + 1] = buf[i];
         };
-        spi.transfer(buf1, new Buffer(buf1.length), function (device, rBuf) {
+        spi.transfer(buf1, new Buffer(buf1.length), function(device, rBuf) {
             csnHigh();
             callback(rBuf);
         });
@@ -1649,7 +1734,7 @@ console.log(spiDev);
      * @return True if an ack payload is available.
      */
     //bool isAckPayloadAvailable(void);
-    nrf.isAckPayloadAvailable = function () {
+    nrf.isAckPayloadAvailable = function() {
         var result = ack_payload_available;
         ack_payload_available = false;
         return result;
@@ -1666,21 +1751,24 @@ console.log(spiDev);
      * @param[out] rx_ready There is a message waiting to be read (RX_DS)
      */
     // void whatHappened(bool& tx_ok,bool& tx_fail,bool& rx_ready);
-    nrf.whatHappened = function (callback) {
+    nrf.whatHappened = function(callback) {
         // Read the status & reset the status in one easy call
         // Or is that such a good idea?
+        //console.log("what1");
         var buf = new Buffer(1);
         buf[0] = _BV(consts.RX_DR) | _BV(consts.TX_DS) | _BV(consts.MAX_RT);
-        writeRegister(consts.STATUS, buf);
-
-        readRegister(consts.STATUS, new Buffer(1), function (resultStatus) {
-
+        //FIXME a remettre ? : writeRegister(consts.STATUS, buf);
+//console.log("what2");
+        readRegister(consts.STATUS, new Buffer(1), function(resultStatus) {
+//console.log("what3");
             // Report to the user what happened
-            callback({
-                tx_ok: resultStatus & _BV(consts.TX_DS),
-                tx_fail: resultStatus & _BV(consts.MAX_RT),
-                rx_ready: resultStatus & _BV(consts.RX_DR)
-            });
+            var result ={
+                tx_ok: resultStatus[0] & _BV(consts.TX_DS),
+                tx_fail: resultStatus[0] & _BV(consts.MAX_RT),
+                rx_ready: resultStatus[0] & _BV(consts.RX_DR)
+            };
+  //          console.log(result);
+            callback(null,result);
 
         });
     };
@@ -1694,8 +1782,8 @@ console.log(spiDev);
      * @return true if was carrier, false if not
      */
     //bool testCarrier(void);
-    nrf.testCarrier = function (callback) {
-        readRegister(consts.CD, new Buffer(1), function (resultCD) {
+    nrf.testCarrier = function(callback) {
+        readRegister(consts.CD, new Buffer(1), function(resultCD) {
             callback(resultCD[0] & 1);
         });
 
@@ -1712,8 +1800,8 @@ console.log(spiDev);
      * @return true if signal => -64dBm, false if not
      */
     //bool testRPD(void) ;
-    nrf.testRPD = function (callback) {
-        readRegister(consts.RPD, new Buffer(1), function (resultRPD) {
+    nrf.testRPD = function(callback) {
+        readRegister(consts.RPD, new Buffer(1), function(resultRPD) {
             callback(resultRPD[0] & 1);
         });
     };
@@ -1726,8 +1814,8 @@ console.log(spiDev);
      * @return us of maximum timeout; accounting for retries
      */
     // uint16_t getMaxTimeout(void) ;
-    nrf.getMaxTimeout = function (callback) {
-        var retries = getRetries(function (resultRetries) {
+    nrf.getMaxTimeout = function(callback) {
+        var retries = getRetries(function(resultRetries) {
             var to = ((250 + (250 * ((resultRetries & 0xf0) >> 4))) * (resultRetries & 0x0f));
 
             callback(to)

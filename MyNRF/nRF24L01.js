@@ -133,3 +133,25 @@ consts.LOW = 0;
 consts.HIGH = 1;
 
 module.exports = consts;
+
+
+// var rf24_datarate_e = [consts.RF24_1MBPS, consts.RF24_2MBPS, consts.RF24_250KBPS];
+
+consts.RF24_1MBPS=0;
+consts.RF24_2MBPS=1;
+consts.RF24_250KBPS=2;
+
+
+//var rf24_crclength_e = [consts.RF24_CRC_DISABLED, consts.RF24_CRC_8, consts.RF24_CRC_16];
+
+consts.RF24_CRC_DISABLED=0;
+consts.RF24_CRC_8=1;
+consts.RF24_CRC_16=2;
+
+
+//var rf24_pa_dbm_e = [consts.RF24_PA_MIN, consts.RF24_PA_LOW, consts.RF24_PA_HIGH, consts.RF24_PA_MAX, consts.RF24_PA_ERROR];
+consts.RF24_PA_MIN=0;
+consts.RF24_PA_LOW=1;
+consts.RF24_PA_HIGH=2;
+consts.RF24_PA_MAX=3;
+consts.RF24_PA_ERROR=4;
