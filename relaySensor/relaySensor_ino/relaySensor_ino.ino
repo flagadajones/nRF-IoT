@@ -48,44 +48,59 @@ void setup(void){
   //setup radio
   radio.begin();
   radio.setRetries( 15,15 );
+  radio.setDataRate(RF24_250KBPS);
+  radio.setCRCLength(RF24_CRC_8);
+  
   radio.enableDynamicPayloads();
   radio.openReadingPipe( 1, RELAYBROADCAST(2) );    //relays send on this
   radio.openReadingPipe( 2, RELAYBROADCAST(1) );    //Nodes send on this
+  radio.printDetails();
   radio.startListening();
+  
+  
   Serial.println("relay starting...");
+  
  }
 
 void loop(void){
   //check to see if we have anything available
-   if ( radio.available() ){
-      bool done = false;
-      while (!done){
+  // if ( radio.available() ){
+  //    bool done = false;
+  //    while (!done){
         //read whatever is available
-        done = radio.read( &header, radio.getDynamicPayloadSize() );
-        Serial.print( "Got message from 0x" ); Serial.print( header.src, HEX );Serial.print( " ID:" );Serial.print( header.ID, HEX ); Serial.print( " Hops: " );Serial.println(header.hops);
-        }
-        delay(20);    //wait a bit for node to switch to receiver
-        radio.stopListening();
-        radio.openWritingPipe( NODEACK(1) );
-        radio.write( &header.ID, sizeof(header.ID), true );    //send out ack with the id of our received message
-        radio.startListening();
+  //      done = radio.read( &header, radio.getDynamicPayloadSize() );
+  //      Serial.print( "Got message from 0x" ); Serial.print( header.src, HEX );Serial.print( " ID:" );Serial.print( header.ID, HEX ); Serial.print( " Hops: " );Serial.println(header.hops);
+  //      }
+  //      delay(20);    //wait a bit for node to switch to receiver
+  //      radio.stopListening();
+   //     radio.openWritingPipe( NODEACK(1) );
+   //     radio.write( &header.ID, sizeof(header.ID), true );    //send out ack with the id of our received message
+   //     radio.startListening();
         //this could be an original node broadcast or it could be another relay's tx.
         //they both get forwarded, DupID is used to stay out of an infinite loops of relays sending relays sending relays...
         //so far remembering the last ten has worked. this might not work on a larger scale. Needs more testing.
         
-        if (!DupID(header.ID)){
+   //     if (!DupID(header.ID)){
           radio.stopListening();
           //send this on to the base
           radio.openWritingPipe( BASEBROADCAST(1) );
+        header.type = 1;
+    header.hops = 1;
+    header.src = 0xAB01;
+    header.ID = 0x1234;
+   header.sensor.temp=11.1;
+  header.sensor.humidity=22.2;
+  header.sensor.pressure=33.3;
+   
           bool ok = radio.write( &header, sizeof(header), true );
      
           //and broadcast this to the other relays incase this relay cant reach the base     
-          header.hops++;    //only count relay hops, not passing from relay to base
-          radio.openWritingPipe( RELAYBROADCAST(2) );
-          radio.write( &header, sizeof(header), true );
+    //      header.hops++;    //only count relay hops, not passing from relay to base
+    //      radio.openWritingPipe( RELAYBROADCAST(2) );
+    //      radio.write( &header, sizeof(header), true );
           radio.startListening();
-        }
-    }
+     //   }
+   // }
 delay(100);
 
   //testing

@@ -46,24 +46,40 @@ void setup(void){
   
   //setup radio
   radio.begin();
-  radio.setRetries( 15,15 );
+  radio.setRetries( 150,150 );
+  radio.setCRCLength(RF24_CRC_8);
+  radio.setDataRate(RF24_250KBPS);
   radio.enableDynamicPayloads();
   radio.openReadingPipe( 1, BASEBROADCAST(1) );    //Nodes send on this
   radio.openWritingPipe( BASEBROADCAST(2) );
   radio.startListening();
+  
   Serial.println("base starting...");
+  radio.printDetails();
  }
 
 void loop(void){
   //check to see if we have anything available
    if ( radio.available() ){
-      bool done = false;
+ //radio.printDetails(); 
+     bool done = false;
       while (!done){
         //read whatever is available
         done = radio.read( &header, radio.getDynamicPayloadSize() );
         if (!DupID(header.ID)){
-          Serial.print( "Got message from 0x" ); Serial.print( header.src, HEX );Serial.print( " ID:" );Serial.print( header.ID, HEX ); Serial.print( " Hops: " );Serial.println(header.hops);
+          Serial.print(header.type);Serial.print(" ");
+          Serial.print(header.hops);Serial.print(" ");
+          Serial.print(header.src,HEX);Serial.print(" ");
+          Serial.print(header.ID,HEX);Serial.print(" ");
+          Serial.print(header.sensor.temp);Serial.print(" ");
+          Serial.print(header.sensor.humidity);Serial.print(" ");
+          Serial.print(header.sensor.pressure);Serial.println(" ");
+          
+       //   Serial.print( "Got message from 0x" ); 
+        //  Serial.print( header.src, HEX );Serial.print( " ID:" );Serial.print( header.ID, HEX ); Serial.print( " Hops: " );Serial.println(header.hops);
         }
       }
     }
+   // radio.printDetails();
+    delay(1000);
 }
