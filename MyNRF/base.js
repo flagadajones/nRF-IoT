@@ -1,6 +1,8 @@
 var nrf = require('./RF24.js');
 var Q = require('q');
 var asap = require('asap');
+var http = require('http');
+
 nrf.RF24('/dev/spidev1.0','P9_16', 'P9_17','P9_15');
 
 function BASEBROADCAST(x) {
@@ -170,7 +172,7 @@ function loop() {
       var res=convert(result.buf);
       //console.log(res);
 //      console.log("from 0x"+res.src.toString(16)+" ID:"+res.ID.toString(16)+" hops: "+res.hops);
-      console.log(res.type+" "+res.hops+" "+res.src.toString(16)+" "+res.ID.toString(16)+" "+res.sensor.temp+" "+res.sensor.humidity+" "+res.sensor.pressure);
+      console.log(res.type+" "+res.hops+" "+res.src+" "+res.ID+" "+res.sensor.temp+" "+res.sensor.humidity+" "+res.sensor.pressure);
 
       deferredTop.resolve(Q.delay(1000));
     }).
@@ -237,8 +239,21 @@ whatResult=what;
       var res=convert(result.buf);
       //console.log(res);
 //      console.log("from 0x"+res.src.toString(16)+" ID:"+res.ID.toString(16)+" hops: "+res.hops);
-      console.log(res.type+" "+res.hops+" "+res.src.toString(16)+" "+res.ID.toString(16)+" "+res.sensor.temp+" "+res.sensor.humidity+" "+res.sensor.pressure);
+      console.log(res.type+" "+res.hops+" "+res.src.toString('hex')+" "+res.ID+" "+res.sensor.temp+" "+res.sensor.voltage);
 
+var options = {
+  host: 'api.thingspeak.com',
+  port: 80,
+  path: '/update?api_key=OG6J10LJ8KIVBVXA&field1='+res.sensor.temp/100+'&field2='+res.sensor.voltage/100.0
+};
+console.log(options);
+http.get(options, function(resp){
+  resp.on('data', function(chunk){
+    console.log(chunk);
+  });
+}).on("error", function(e){
+  console.log("Got error: " + e.message);
+});
     }).
     catch (function(error) {
 //      console.log("error loop");
@@ -264,14 +279,16 @@ struct HEADER{
 function convert(buffer) {
   var result = {};
   try{
-  result.type = buffer.readInt32LE(0);
-  result.hops = buffer.readInt32LE(4);
-  result.src = buffer.readInt32LE(8);
-  result.ID = buffer.readInt32LE(12);
+  result.type = buffer.readInt8(0);
+  result.hops = buffer.readInt32LE(1);
+  result.src=new Buffer(8);
+  buffer.copy(result.src,0,5,13);
+  //result.src = buffer.readInt16LE(5);
+  
+  result.ID = buffer.readInt16LE(13);
   result.sensor = {};
-  result.sensor.temp = buffer.readFloatLE(16);
-  result.sensor.humidity = buffer.readFloatLE(20);
-  result.sensor.pressure = buffer.readFloatLE(24);
+  result.sensor.temp = buffer.readInt16LE(15);
+  result.sensor.voltage = buffer.readInt16LE(17);
 }catch(error){
   console.log("erreur convert");
   console.log(error);
