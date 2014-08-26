@@ -71,8 +71,27 @@ function DupID(id) {
   cntID++;
   return found;
 }
+function boot(){
+    var options = {
+      host: 'api.thingspeak.com',
+      port: 80,
+      path: '/update?api_key=OG6J10LJ8KIVBVXA&field3=1'
+    };
+//console.log(options);
+  http.get(options, function(resp){
+      resp.on('data', function(chunk){
+        console.log(chunk);
+      });
+  }).on("error", function(e){
 
+      console.log("Got error: " + e.message);
+setTimeout(boot, 5000);
+  });
+  
+  
+};
 function setup() {
+  boot();
 
   nrf.begin();
   //setup radio
@@ -239,17 +258,19 @@ whatResult=what;
       var res=convert(result.buf);
       //console.log(res);
 //      console.log("from 0x"+res.src.toString(16)+" ID:"+res.ID.toString(16)+" hops: "+res.hops);
-      console.log(res.type+" "+res.hops+" "+res.src.toString('hex')+" "+res.ID+" "+res.sensor.temp+" "+res.sensor.voltage);
+//      console.log(res.type+" "+res.hops+" "+res.src.toString('hex')+" "+res.ID+" "+res.sensor.temp+" "+res.sensor.voltage);
+     
+      console.log(new Date()+ " " +result.buf.toString('hex')+" "+res.ID+" "+res.src.toString('hex')+" "+res.type+" "+res.hops+" "+res.sensor.temp+" "+res.sensor.voltage);
 
 var options = {
   host: 'api.thingspeak.com',
   port: 80,
-  path: '/update?api_key=OG6J10LJ8KIVBVXA&field1='+res.sensor.temp/100+'&field2='+res.sensor.voltage/100.0
+  path: '/update?api_key=OG6J10LJ8KIVBVXA&field1='+res.sensor.temp/100+'&field2='+res.sensor.voltage/1000.0
 };
-console.log(options);
+//console.log(options);
 http.get(options, function(resp){
   resp.on('data', function(chunk){
-    console.log(chunk);
+  //  console.log(chunk);
   });
 }).on("error", function(e){
   console.log("Got error: " + e.message);
@@ -280,15 +301,15 @@ function convert(buffer) {
   var result = {};
   try{
   result.type = buffer.readInt8(0);
-  result.hops = buffer.readInt32LE(1);
+  result.hops = buffer.readInt8(1);
   result.src=new Buffer(8);
-  buffer.copy(result.src,0,5,13);
+  buffer.copy(result.src,0,2,10);
   //result.src = buffer.readInt16LE(5);
   
-  result.ID = buffer.readInt16LE(13);
+  result.ID = buffer.readInt16LE(10);
   result.sensor = {};
-  result.sensor.temp = buffer.readInt16LE(15);
-  result.sensor.voltage = buffer.readInt16LE(17);
+  result.sensor.temp = buffer.readInt16LE(12);
+  result.sensor.voltage = buffer.readInt16LE(14);
 }catch(error){
   console.log("erreur convert");
   console.log(error);
