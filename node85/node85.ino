@@ -1,12 +1,16 @@
-#include <Narcoleptic.h>
 
+#include <Narcoleptic.h>
+#include <avr/wdt.h>
 #include <OneWire.h>
 #include <SPI.h>
+
 #include "nRF24L01.h"
 #include "RF24.h"
+
+
 //#define MYDEVMODE 1
 
-RF24 radio(9, 10);
+RF24 radio(8, 7);
 
 const long long       // Use pipe + 1 for nodes, pipe + 2 for relays
 RELAYBROADCAST  = 0xAA00000000LL,
@@ -32,7 +36,10 @@ const byte MAX_RETRIES = 5;       // How many times will we try?
 
 //short myID;
 short packetID;
-OneWire ds(7);
+//OneWire ds(10);
+const int ONE_WIRE_POWER_PIN = 9;       // How many times will we try?
+
+OneWire ds(10);
 
 //byte myID[8];
 byte data[2];
@@ -42,6 +49,7 @@ void setup(void) {
 
 #endif
   randomSeed(analogRead(0));
+  pinMode(ONE_WIRE_POWER_PIN, OUTPUT);
 
   setupTemp();
   setupRadio();
@@ -65,14 +73,11 @@ void setupRadio() {
 }
 
 void setupTemp() {
+  digitalWrite(ONE_WIRE_POWER_PIN, HIGH);
+  delay(50);
   ds.search(header.src);
 
-  ds.reset();
-  ds.select(header.src);
-  ds.write(0x4E, 1);  //set resolution to 10 bits
-  ds.write(0x00, 1);
-  ds.write(0x00, 1);
-  ds.write(0x3F, 1);
+  digitalWrite(ONE_WIRE_POWER_PIN, LOW);
 
 #if defined(MYDEVMODE)
   for (int i = 0; i < 8; i++) {
@@ -81,10 +86,12 @@ void setupTemp() {
   }
   Serial.println();
 #endif
+
+  //pinMode(ONE_WIRE_POWER_PIN,INPUT);
 };
 const long InternalReferenceVoltage = 1100;  // Adjust this value to your board's specific internal BG voltage
 
-int getBandgap ()
+/*int getBandgap ()
 {
   // REFS0 : Selects AVcc external reference
   // MUX3 MUX2 MUX1 : Selects 1.1V (VBG)
@@ -95,13 +102,49 @@ int getBandgap ()
   int results = (((InternalReferenceVoltage * 1024) / ADC) + 5) / 10;
   return results;
 }
+*/
+long readVcc() {
+  // Read 1.1V reference against AVcc
+  // set the reference to Vcc and the measurement to the internal 1.1V reference
+  //#if defined(__AVR_ATmega32U4__) || defined(__AVR_ATmega1280__) || defined(__AVR_ATmega2560__)
+  //  ADMUX = _BV(REFS0) | _BV(MUX4) | _BV(MUX3) | _BV(MUX2) | _BV(MUX1);
+  // #elif defined (__AVR_ATtiny24__) || defined(__AVR_ATtiny44__) || defined(__AVR_ATtiny84__)
+  ADMUX = _BV(MUX5) | _BV(MUX0);
+  //  #elif defined (__AVR_ATtiny25__) || defined(__AVR_ATtiny45__) || defined(__AVR_ATtiny85__)
+  //    ADMUX = _BV(MUX3) | _BV(MUX2);
+  //  #else
+  //    ADMUX = _BV(REFS0) | _BV(MUX3) | _BV(MUX2) | _BV(MUX1);
+  //  #endif
 
+  delay(2); // Wait for Vref to settle
+  ADCSRA |= _BV(ADSC); // Start conversion
+  while (bit_is_set(ADCSRA, ADSC)); // measuring
+
+  uint8_t low  = ADCL; // must read ADCL first - it then locks ADCH
+  uint8_t high = ADCH; // unlocks both
+
+  long result = (high << 8) | low;
+
+  result = 1125300L / result; // Calculate Vcc (in mV); 1125300 = 1.1*1023*1000
+  return result; // Vcc in millivolts
+}
 short getTemp() {
+  //  pinMode(ONE_WIRE_POWER_PIN,OUTPUT);
+  digitalWrite(ONE_WIRE_POWER_PIN, HIGH);
+  delay(50);
+  ds.reset();
+  ds.select(header.src);
+  ds.write(0x4E, 1);  //set resolution to 10 bits
+  ds.write(0x00, 1);
+  ds.write(0x00, 1);
+  ds.write(0x3F, 1);
 
   ds.reset();
   ds.select(header.src);
   ds.write(0x44, 1); //start convertion
   delay(188); //188ms en10 bits
+  //delay(200);
+  // delay(500); //188ms en10 bits
 
   ds.reset();
   ds.select(header.src);
@@ -110,6 +153,10 @@ short getTemp() {
   for ( int i = 0; i < 2; i++) {           // we need 9 bytes
     data[i] = ds.read();
   }
+  // delay(20);
+  digitalWrite(ONE_WIRE_POWER_PIN, LOW);
+  // pinMode(ONE_WIRE_POWER_PIN,INPUT);
+
   // Calcul de la température en degré Celsius
   return (((data[1] << 8) | data[0]) * 0.0625) * 100;
 };
@@ -117,7 +164,27 @@ short getTemp() {
 void loop(void) {
 
   header.sensor.temp = getTemp();
-  header.sensor.voltage = getBandgap();
+  // short minBandGap = 30000;
+  //  short maxBandGap = -30000;
+  //  long sumBandGap = 0;
+  /* int nbBand = 5;
+
+   while (nbBand-- > 0) {
+     short result = readVcc();
+     if (minBandGap > result)
+    {   minBandGap = result;
+     }
+     if (maxBandGap < result)
+      { maxBandGap = result;
+     }
+     sumBandGap += result;
+
+   }
+
+   sumBandGap = sumBandGap - minBandGap - maxBandGap;
+   */
+  //  header.sensor.voltage = sumBandGap / 3;
+  header.sensor.voltage = readVcc();
 #if defined(MYDEVMODE)
 
   Serial.println(header.sensor.voltage);
@@ -133,8 +200,17 @@ void loop(void) {
 
   wait(MAX_RETRIES, packetID);        // Wait for it to be acknowledged
   radio.powerDown();
-  Narcoleptic.delay(300000);              // Pause before repeating
-
+  //Serial.println("emit");
+  //byte i=2;
+  //  while(i-->0){
+  //    Narcoleptic.delay(8000);              // Pause before repeating
+  //}
+  short i = 37;
+  while (i > 0) {
+    Narcoleptic.sleep(WDTO_8S);
+    i--;
+  }
+  //Narcoleptic.delay(300000L);
 }
 
 // Get Ack from relay or timeout
@@ -162,19 +238,25 @@ void wait(byte retries, short packetID) {
 
     ack(reply, packetID);
   }
+#if defined(MYDEVMODE)
+
   else {
 
     nak(packetID);
   }
+#endif
+
 }
 
 // Signal a NAK
-void nak(long packetID) {
 #if defined(MYDEVMODE)
+void nak(long packetID) {
+
 
   Serial.print(F("NACK:      ")); Serial.println(packetID, HEX);
-#endif
+
 }
+#endif
 
 // Signal an ACK
 void ack(bool reply, long packetID) {

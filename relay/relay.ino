@@ -16,10 +16,10 @@ struct SENSOR {
 
 struct HEADER {
   byte type;//1
-  long hops;//4
+  byte hops;//1
   byte src[8];//2
   short ID;//2
-  byte sensor[23];//=32 - le reste=
+  byte sensor[26];//=32 - le reste=
 };
 HEADER header;
 

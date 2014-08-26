@@ -1,12 +1,17 @@
 #include <Narcoleptic.h>
+#include <avr/wdt.h>
+#include <DHT.h>
 
-#include <OneWire.h>
 #include <SPI.h>
+
 #include "nRF24L01.h"
 #include "RF24.h"
+
+#define DHTTYPE DHT22
+
 //#define MYDEVMODE 1
 
-RF24 radio(9, 10);
+RF24 radio(8, 7);
 
 const long long       // Use pipe + 1 for nodes, pipe + 2 for relays
 RELAYBROADCAST  = 0xAA00000000LL,
@@ -14,6 +19,7 @@ NODEACK         = 0xCC00000000LL;
 
 struct SENSOR {
   short temp;
+  short hygro;
   short voltage;
 };
 
@@ -28,11 +34,15 @@ struct HEADER {
 HEADER header;
 
 byte retries = 0;                 // How many times have we tried to rx
-const byte MAX_RETRIES = 5;       // How many times will we try?
+#define MAX_RETRIES  5       // How many times will we try?
 
 //short myID;
 short packetID;
-OneWire ds(7);
+//OneWire ds(10);
+#define DHT_POWER_PIN  9       // How many times will we try?
+#define DHT_DATA_PIN  10       // How many times will we try?
+
+DHT dht(DHT_DATA_PIN, DHTTYPE);
 
 //byte myID[8];
 byte data[2];
@@ -42,9 +52,18 @@ void setup(void) {
 
 #endif
   randomSeed(analogRead(0));
+  pinMode(DHT_POWER_PIN, OUTPUT);
 
   setupTemp();
   setupRadio();
+  header.src[0] = 'e';
+  header.src[1] = 'x';
+  header.src[2] = 't';
+  header.src[3] = 'e';
+  header.src[4] = 'r';
+  header.src[5] = 'i';
+  header.src[6] = 'e';
+  header.src[7] = 'u';
 
 }
 void setupRadio() {
@@ -65,59 +84,50 @@ void setupRadio() {
 }
 
 void setupTemp() {
-  ds.search(header.src);
+  digitalWrite(DHT_POWER_PIN, HIGH);
+  delay(50);
+  dht.begin();
+  digitalWrite(DHT_POWER_PIN, LOW);
 
-  ds.reset();
-  ds.select(header.src);
-  ds.write(0x4E, 1);  //set resolution to 10 bits
-  ds.write(0x00, 1);
-  ds.write(0x00, 1);
-  ds.write(0x3F, 1);
-
-#if defined(MYDEVMODE)
-  for (int i = 0; i < 8; i++) {
-    Serial.print(header.src[i], HEX);
-    Serial.print(" ");
-  }
-  Serial.println();
-#endif
 };
 const long InternalReferenceVoltage = 1100;  // Adjust this value to your board's specific internal BG voltage
 
-int getBandgap ()
-{
-  // REFS0 : Selects AVcc external reference
-  // MUX3 MUX2 MUX1 : Selects 1.1V (VBG)
-  ADMUX = _BV (REFS0) | _BV (MUX3) | _BV (MUX2) | _BV (MUX1);
-  ADCSRA |= _BV( ADSC );  // start conversion
-  while (ADCSRA & _BV (ADSC))
-  { }  // wait for conversion to complete
-  int results = (((InternalReferenceVoltage * 1024) / ADC) + 5) / 10;
-  return results;
+long readVcc() {
+  ADMUX = _BV(MUX5) | _BV(MUX0);
+
+  delay(2); // Wait for Vref to settle
+  ADCSRA |= _BV(ADSC); // Start conversion
+  while (bit_is_set(ADCSRA, ADSC)); // measuring
+
+  uint8_t low  = ADCL; // must read ADCL first - it then locks ADCH
+  uint8_t high = ADCH; // unlocks both
+
+  long result = (high << 8) | low;
+
+  result = 1125300L / result; // Calculate Vcc (in mV); 1125300 = 1.1*1023*1000
+  return result; // Vcc in millivolts
 }
+void getTemp() {
+  //  pinMode(DHT_POWER_PIN,OUTPUT);
+  digitalWrite(DHT_POWER_PIN, HIGH);
+  Narcoleptic.sleep(WDTO_2S);
 
-short getTemp() {
 
-  ds.reset();
-  ds.select(header.src);
-  ds.write(0x44, 1); //start convertion
-  delay(188); //188ms en10 bits
+  header.sensor.temp = (dht.readTemperature() * 100); // Lecture de la température
+  header.sensor.hygro = (dht.readHumidity() * 100); // Lecture de l'hygrométrie
 
-  ds.reset();
-  ds.select(header.src);
-  ds.write(0xBE); // Read Scratchpad
+  // delay(20);
+  digitalWrite(DHT_POWER_PIN, LOW);
+  // pinMode(DHT_POWER_PIN,INPUT);
 
-  for ( int i = 0; i < 2; i++) {           // we need 9 bytes
-    data[i] = ds.read();
-  }
   // Calcul de la température en degré Celsius
-  return (((data[1] << 8) | data[0]) * 0.0625) * 100;
 };
 
 void loop(void) {
 
-  header.sensor.temp = getTemp();
-  header.sensor.voltage = getBandgap();
+  getTemp();
+  header.sensor.voltage = readVcc();
+
 #if defined(MYDEVMODE)
 
   Serial.println(header.sensor.voltage);
@@ -133,8 +143,17 @@ void loop(void) {
 
   wait(MAX_RETRIES, packetID);        // Wait for it to be acknowledged
   radio.powerDown();
-  Narcoleptic.delay(300000);              // Pause before repeating
-
+  //Serial.println("emit");
+  //byte i=2;
+  //  while(i-->0){
+  //    Narcoleptic.delay(8000);              // Pause before repeating
+  //}
+  short i = 37;
+  while (i > 0) {
+    Narcoleptic.sleep(WDTO_8S);
+    i--;
+  }
+  //Narcoleptic.delay(300000L);
 }
 
 // Get Ack from relay or timeout
@@ -162,19 +181,25 @@ void wait(byte retries, short packetID) {
 
     ack(reply, packetID);
   }
+#if defined(MYDEVMODE)
+
   else {
 
     nak(packetID);
   }
+#endif
+
 }
 
 // Signal a NAK
-void nak(long packetID) {
 #if defined(MYDEVMODE)
+void nak(long packetID) {
+
 
   Serial.print(F("NACK:      ")); Serial.println(packetID, HEX);
-#endif
+
 }
+#endif
 
 // Signal an ACK
 void ack(bool reply, long packetID) {
@@ -206,7 +231,7 @@ void xmit(long packetID, byte pipe_id) {
 
 
   header.ID = packetID;
-  header.type = 3;
+  header.type = 4;
   header.hops = 0;
   //header.src = myID;
 
